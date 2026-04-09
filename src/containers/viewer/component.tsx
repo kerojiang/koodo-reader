@@ -230,6 +230,12 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
               ? "sliding"
               : "",
           convertChinese: ConfigService.getReaderConfig("convertChinese"),
+          fullTranslationMode:
+            ConfigService.getAllListConfig("fullTranslationBooks").includes(
+              this.props.currentBook.key
+            ) && this.props.isAuthed
+              ? ConfigService.getReaderConfig("fullTranslationMode")
+              : "no",
           textOrientation: ConfigService.getReaderConfig("textOrientation"),
           parserRegex: "",
           isDarkMode:
@@ -322,7 +328,7 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
       ConfigService.getReaderConfig("isConvertPDF") !== "yes"
     ) {
     } else {
-      StyleUtil.addDefaultCss();
+      StyleUtil.addDefaultCss(this.props.currentBook.key);
     }
     let bookLocation: {
       text: string;
@@ -403,7 +409,7 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
         ConfigService.getReaderConfig("isConvertPDF") !== "yes"
       ) {
       } else {
-        StyleUtil.addDefaultCss();
+        StyleUtil.addDefaultCss(this.props.currentBook.key);
       }
       // rendition.tranformText();
       this.handleBindGesture();

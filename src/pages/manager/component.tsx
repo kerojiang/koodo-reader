@@ -5,10 +5,10 @@ import DeleteDialog from "../../components/dialogs/deleteDialog";
 import EditDialog from "../../components/dialogs/editDialog";
 import AddDialog from "../../components/dialogs/addDialog";
 import SortDialog from "../../components/dialogs/sortBookDialog";
-import AboutDialog from "../../components/dialogs/aboutDialog";
 import BackupDialog from "../../components/dialogs/backupDialog";
 import LocalFileDialog from "../../components/dialogs/localFileDialog";
 import ImportDialog from "../../components/dialogs/importDialog";
+import OPDSDialog from "../../components/dialogs/opdsDialog";
 import { ManagerProps, ManagerState } from "./interface";
 import { Trans } from "react-i18next";
 import SettingDialog from "../../components/dialogs/settingDialog";
@@ -24,6 +24,7 @@ import SortShelfDialog from "../../components/dialogs/sortShelfDialog";
 import PopupNote from "../../components/popups/popupNote";
 import toast from "react-hot-toast";
 import { supportedFormats } from "../../utils/common";
+import edgeTTSService from "../../utils/common/edgeTTSService";
 class Manager extends React.Component<ManagerProps, ManagerState> {
   timer!: NodeJS.Timeout;
   constructor(props: ManagerProps) {
@@ -78,6 +79,12 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
   }
   componentDidMount() {
     this.props.handleReadingState(false);
+    
+    // 程序启动时后台初始化 Edge TTS 服务
+    edgeTTSService.init().then(() => {
+      console.log('[Manager] Edge TTS 服务初始化完成');
+    });
+    
     // Auto switch to configured startup shelf
     const startupShelf = ConfigService.getReaderConfig("startupShelf");
     if (startupShelf) {
@@ -167,6 +174,7 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
               this.props.isSettingOpen ||
               this.props.isBackup ||
               this.props.isOpenImportDialog ||
+              this.props.isOpenOPDSDialog ||
               this.props.isOpenSortShelfDialog ||
               this.props.isShowNew ||
               this.props.isShowSupport ||
@@ -201,10 +209,10 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
         {this.props.isOpenAddDialog && <AddDialog />}
         {this.props.isShowLoading && <LoadingDialog />}
         {this.props.isSortDisplay && <SortDialog />}
-        {this.props.isAboutOpen && <AboutDialog />}
         {this.props.isBackup && <BackupDialog />}
         {this.props.isOpenLocalFileDialog && <LocalFileDialog />}
         {this.props.isOpenImportDialog && <ImportDialog />}
+        {this.props.isOpenOPDSDialog && <OPDSDialog />}
         {this.props.isOpenSortShelfDialog && <SortShelfDialog />}
         {this.props.isSettingOpen && <SettingDialog />}
         {this.props.isDetailDialog && <DetailDialog />}

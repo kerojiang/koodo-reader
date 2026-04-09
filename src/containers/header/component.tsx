@@ -642,7 +642,8 @@ class Header extends React.Component<HeaderProps, HeaderState> {
           <div
             className="setting-icon-container"
             onClick={() => {
-              this.props.handleAbout(!this.props.isAboutOpen);
+              this.props.handleSetting(true);
+              this.props.handleAbout(false);
             }}
             onMouseLeave={() => {
               this.props.handleAbout(false);
@@ -686,10 +687,10 @@ class Header extends React.Component<HeaderProps, HeaderState> {
             onClick={async () => {
               if (!isElectron && !this.props.isAuthed) {
                 toast(
-                  this.props.t(
-                    "This feature is not available in the free version"
-                  )
+                  this.props.t("Please upgrade to Pro to use this feature")
                 );
+                this.props.handleSetting(true);
+                this.props.handleSettingMode("account");
                 return;
               }
               this.setState({ isSync: true });

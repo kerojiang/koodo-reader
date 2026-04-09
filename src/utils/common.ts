@@ -4,6 +4,7 @@ import SparkMD5 from "spark-md5";
 import {
   CommonTool,
   ConfigService,
+  KookitConfig,
   SyncUtil,
   TokenService,
 } from "../assets/lib/kookit-extra-browser.min";
@@ -82,6 +83,36 @@ export const vexPromptAsync = (message, placeholder = "", value = "") => {
     });
   });
 };
+export const vexTextareaAsync = (message, value = "") => {
+  return new Promise<string | false>((resolve) => {
+    window.vex.dialog.buttons.YES.text = i18n.t("Confirm");
+    window.vex.dialog.buttons.NO.text = i18n.t("Cancel");
+    const textareaHtml = [
+      `<div style="margin-bottom:10px">`,
+      `<textarea name="vex-textarea" style="width:100%;height:200px;">${value}</textarea>`,
+      `</div>`,
+    ].join("");
+    window.vex.dialog.open({
+      unsafeMessage: message ? i18n.t(message).replace(/\n/g, "<br>") : "",
+      input: textareaHtml,
+      callback: function (data) {
+        if (!data) {
+          resolve(false);
+        } else {
+          resolve(data["vex-textarea"] ?? "");
+        }
+      },
+    });
+  });
+};
+export const defaultPrompts: Record<string, string> = {
+  aiTranslate:
+    "You are a professional translator. Translate the following text from {from} to {to}. Only return the translated text, no explanations.\n\nText: {text}",
+  aiDict:
+    "You are a professional dictionary assistant. Analyze the word or phrase: {word}\nProvide a comprehensive explanation including pronunciation, definitions, example sentences, and usage notes using {to} as the target language. ",
+  aiAssistance:
+    "You are a helpful reading assistant. The user is reading a book. Here is the context:\n{text}\n\nAnswer the user's question concisely and helpfully, and reply with the same language.",
+};
 export const vexComfirmAsync = (message, confirmText: string = "Confirm") => {
   return new Promise((resolve) => {
     window.vex.dialog.buttons.YES.text = i18n.t(confirmText);
@@ -99,7 +130,11 @@ export const vexComfirmAsync = (message, confirmText: string = "Confirm") => {
     });
   });
 };
-export const vexOpenAsync = (config: Record<string, any>, message: string) => {
+export const vexOpenAsync = (
+  config: Record<string, any>,
+  message: string,
+  labels?: Record<string, string>
+) => {
   return new Promise<Record<string, any> | false>((resolve) => {
     window.vex.dialog.buttons.YES.text = i18n.t("Confirm");
     window.vex.dialog.buttons.NO.text = i18n.t("Cancel");
@@ -111,9 +146,10 @@ export const vexOpenAsync = (config: Record<string, any>, message: string) => {
           typeof raw === "string" && raw.indexOf("[") > -1 ? raw : "";
         const value =
           typeof raw === "string" && raw.indexOf("[") === -1 ? raw : "";
+        const displayLabel = labels?.[key] ?? key;
         return [
           `<div style="margin-bottom:10px">`,
-          `<label style="display:block;margin-bottom:4px;font-weight:500">${key}</label>`,
+          `<label style="display:block;margin-bottom:4px;font-weight:500">${displayLabel}</label>`,
           `<input name="${key}" type="text" placeholder="${placeholder}" value="${value}" style="width:100%" required />`,
           `</div>`,
         ].join("");
@@ -449,6 +485,7 @@ export const preCacheAllBooks = async (bookList: Book[]) => {
         animation:
           ConfigService.getReaderConfig("isSliding") === "yes" ? "sliding" : "",
         convertChinese: ConfigService.getReaderConfig("convertChinese"),
+        fullTranslationMode: "no",
         textOrientation: ConfigService.getReaderConfig("textOrientation"),
         parserRegex: "",
         isDarkMode: "no",
@@ -598,38 +635,12 @@ export const getDefaultTransTarget = (langList) => {
   for (let key in langList) {
     langMap[langList[key]] = key;
   }
-  const langMap2 = {
-    zhCN: "Chinese",
-    zhTW: "Chinese",
-    zhMO: "Chinese",
-    ja: "Japanese",
-    uk: "Ukrainian",
-    ko: "Korean",
-    vi: "Vietnamese",
-    th: "Thai",
-    ru: "Russian",
-    ar: "Arabic",
-    fr: "French",
-    de: "German",
-    es: "Spanish",
-    it: "Italian",
-    pt: "Portuguese",
-    ptBR: "Portuguese",
-    nl: "Dutch",
-    id: "Indonesian",
-    tr: "Turkish",
-    pl: "Polish",
-    cs: "Czech",
-    sv: "Swedish",
-    bn: "Bengali",
-    tl: "Tagalog",
-    ga: "Irish",
-    bg: "Bulgarian",
-    fa: "Persian",
-  };
+
   const lang = ConfigService.getReaderConfig("lang");
   const langKeys = Object.keys(langMap);
-  let langTarget = langKeys.find((key) => key.includes(langMap2[lang]));
+  let langTarget = langKeys.find((key) =>
+    key.includes(KookitConfig.ConvertLangMap[lang])
+  );
   return langMap[langTarget || "English"];
 };
 export const WEBSITE_URL = "https://koodoreader.com";
@@ -1156,6 +1167,9 @@ export const splitSentences = (text: string, maxLength?: number) => {
   return trimmed
     .flatMap(splitLongSentence)
     .filter((sentence) => /[\p{L}\p{N}]/u.test(sentence));
+};
+export const trimSpecialCharacters = (text: string) => {
+  return text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 };
 export const getICloudDrivePath = () => {
   if (!isElectron) return "";

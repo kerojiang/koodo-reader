@@ -22,4 +22,13 @@ export interface TextToSpeechState {
   voiceLocale: string;
   languageList: string[];
   voiceList: any;
+  isEdgeTtsAvailable: boolean;
+  multiRoleEnabled: boolean;
+  multiRoleVoiceType: string;
+  multiRoleNarratorVoice: string;
+  multiRoleMaleVoice: string;
+  multiRoleFemaleVoice: string;
+  multiRoleNarratorEngine: string;
+  multiRoleMaleEngine: string;
+  multiRoleFemaleEngine: string;
 }

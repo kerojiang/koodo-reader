@@ -251,6 +251,7 @@ class ImportLocal extends React.Component<ImportLocalProps, ImportLocalState> {
                       : "",
                   convertChinese:
                     ConfigService.getReaderConfig("convertChinese"),
+                  fullTranslationMode: "no",
                   textOrientation:
                     ConfigService.getReaderConfig("textOrientation"),
                   parserRegex: "",
@@ -326,6 +327,13 @@ class ImportLocal extends React.Component<ImportLocalProps, ImportLocalState> {
     this.setState({ isMoreOptionsVisible: false });
 
     this.props.handleImportDialog(true);
+  };
+
+  // Handle OPDS import
+  handleOPDSImport = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering the Dropzone
+    this.setState({ isMoreOptionsVisible: false });
+    this.props.handleOPDSDialog(true);
   };
   render() {
     return (
@@ -528,6 +536,14 @@ class ImportLocal extends React.Component<ImportLocalProps, ImportLocalState> {
                     >
                       <span className="more-option-text">
                         <Trans>From cloud storage</Trans>
+                      </span>
+                    </div>
+                    <div
+                      className="more-option-item"
+                      onClick={this.handleOPDSImport}
+                    >
+                      <span className="more-option-text">
+                        <Trans>From OPDS</Trans>
                       </span>
                     </div>
                   </div>

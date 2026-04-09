@@ -5,15 +5,10 @@ import { ConfigService } from "../../../assets/lib/kookit-extra-browser.min";
 import Parser from "html-react-parser";
 import DOMPurify from "dompurify";
 import { Trans } from "react-i18next";
-import {
-  getWebsiteUrl,
-  handleContextMenu,
-  openExternalUrl,
-} from "../../../utils/common";
+import { defaultPrompts, handleContextMenu } from "../../../utils/common";
 import toast from "react-hot-toast";
-import DatabaseService from "../../../utils/storage/databaseService";
-import { checkPlugin } from "../../../utils/common";
 import { getAnswerStream } from "../../../utils/request/reader";
+import { chatStream } from "../../../utils/request/common";
 import { marked } from "marked";
 import { sampleQuestion } from "../../../constants/settingList";
 class PopupAssist extends React.Component<PopupAssistProps, PopupAssistState> {
@@ -23,9 +18,7 @@ class PopupAssist extends React.Component<PopupAssistProps, PopupAssistState> {
     super(props);
     this.state = {
       answer: "",
-      aiService:
-        ConfigService.getReaderConfig("aiService") ||
-        "official-ai-assistant-plugin",
+      aiService: ConfigService.getReaderConfig("aiService") || "",
       isAddNew: false,
       isWaiting: false,
       question: "",
@@ -35,6 +28,23 @@ class PopupAssist extends React.Component<PopupAssistProps, PopupAssistState> {
       inputQuestion: "",
     };
     this.chatBoxRef = React.createRef();
+  }
+  componentDidMount(): void {
+    if (!this.state.aiService) {
+      let pluginList = this.props.plugins.filter(
+        (item) => item.type === "assistant"
+      );
+      if (pluginList.length > 0) {
+        this.setState({
+          aiService: pluginList[0].key,
+        });
+        ConfigService.setReaderConfig("aiService", pluginList[0].key);
+      } else {
+        this.setState({
+          isAddNew: true,
+        });
+      }
+    }
   }
   scrollToBottom = () => {
     if (this.chatBoxRef.current) {
@@ -73,6 +83,87 @@ class PopupAssist extends React.Component<PopupAssistProps, PopupAssistState> {
   handleDoAnswer = async (text: string) => {
     try {
       if (
+        this.state.aiService &&
+        this.state.aiService === "custom-ai-assistant-plugin"
+      ) {
+        let plugin = this.props.plugins.find(
+          (item) => item.key === "custom-ai-assistant-plugin"
+        );
+        if (!plugin) {
+          return;
+        }
+        let isFirst = true;
+        let systemPrompt =
+          ConfigService.getReaderConfig("aiAssistancePrompt") ||
+          defaultPrompts.aiAssistance;
+        if (this.state.mode === "ask") {
+          systemPrompt = systemPrompt.replace("{text}", text);
+        } else {
+          systemPrompt = systemPrompt.replace("{text}", "");
+        }
+        let config: any = plugin.config || {};
+        let chatHistory =
+          this.state.mode === "ask"
+            ? this.state.askHistory
+            : this.state.chatHistory;
+        // Build messages: system prompt as first user message, then history, then current question
+        const historyMessages = chatHistory.slice(0, -1); // exclude the latest user message we just added
+        const currentQuestion =
+          chatHistory[chatHistory.length - 1]?.content || this.state.question;
+        console.log(historyMessages, systemPrompt);
+        if (!currentQuestion) {
+          return;
+        }
+        await chatStream(
+          config.endpoint,
+          config.apiKey,
+          config.modelId,
+          systemPrompt + "\n\nUser question: " + currentQuestion,
+          historyMessages,
+          (result) => {
+            if (result && result.done) {
+              return;
+            }
+            if (result && result.text) {
+              if (isFirst) {
+                this.setState({ answer: result.text, isWaiting: false });
+                isFirst = false;
+              } else {
+                this.setState({
+                  answer: this.state.answer + result.text,
+                });
+              }
+            }
+            if (ConfigService.getReaderConfig("isManualScroll") !== "yes") {
+              this.scrollToBottom();
+            }
+          }
+        );
+        if (this.state.mode === "ask") {
+          this.setState({
+            askHistory: [
+              ...this.state.askHistory,
+              { role: "assistant", content: this.state.answer },
+            ],
+            answer: "",
+            question: "",
+            isWaiting: false,
+          });
+        } else {
+          this.setState({
+            chatHistory: [
+              ...this.state.chatHistory,
+              { role: "assistant", content: this.state.answer },
+            ],
+            answer: "",
+            question: "",
+            isWaiting: false,
+          });
+        }
+        if (ConfigService.getReaderConfig("isManualScroll") !== "yes") {
+          this.scrollToBottom();
+        }
+      } else if (
         this.state.aiService &&
         this.state.aiService !== "official-ai-assistant-plugin"
       ) {
@@ -305,6 +396,13 @@ class PopupAssist extends React.Component<PopupAssistProps, PopupAssistState> {
               this.handleChangeAiService(event.target.value);
             }}
           >
+            <option
+              value={""}
+              key={"select"}
+              className="add-dialog-shelf-list-option"
+            >
+              {this.props.t("Please select")}
+            </option>
             {this.props.plugins
               .filter((item) => item.type === "assistant")
               .map((item) => {
@@ -348,7 +446,7 @@ class PopupAssist extends React.Component<PopupAssistProps, PopupAssistState> {
                 this.props.handleOpenMenu(false);
                 this.props.handleMenuMode("");
                 this.props.handleSetting(true);
-                this.props.handleSettingMode("plugins");
+                this.props.handleSettingMode("ai");
               }}
             >
               <Trans>Add new plugin</Trans>
