@@ -29,6 +29,7 @@ import {
 } from "../../utils/reader/bookDrag";
 import Footer from "../../components/footer";
 import ProtectionOverlay from "../../components/protection";
+import edgeTTSService from "../../utils/common/edgeTTSService";
 class Manager extends React.Component<ManagerProps, ManagerState> {
   timer!: NodeJS.Timeout;
   private isDraggingFromApp = false;
@@ -87,6 +88,12 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
     document.addEventListener("dragstart", this.handleDocumentDragStart, true);
     document.addEventListener("dragend", this.handleDocumentDragEnd, true);
     document.addEventListener("dragenter", this.handleExternalDragEnter, true);
+
+    // 程序启动时后台初始化 Edge TTS 服务
+    edgeTTSService.init().then(() => {
+      console.log('[Manager] Edge TTS 服务初始化完成');
+    });
+    
     // Auto switch to configured startup shelf
     const startupShelf = ConfigService.getReaderConfig("startupShelf");
     if (startupShelf) {
