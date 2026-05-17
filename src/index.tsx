@@ -10,20 +10,20 @@ import Router from "./router/index";
 import StyleUtil from "./utils/reader/styleUtil";
 import { initSystemFont, initTheme } from "./utils/reader/launchUtil";
 import { migrateThemeConfig } from "./utils/reader/themeUtil";
-import edgeTTSService from "./utils/common/edgeTTSService";
+import kerojiangTTSService from "./utils/common/kerojiangTTSService";
 import { isElectron } from "react-device-detect";
 
 initTheme();
 initSystemFont();
 migrateThemeConfig();
 
-// 应用启动时立即在后台初始化 Edge TTS 服务
+// 应用启动时立即在后台初始化 Kerojiang TTS 服务
 if (isElectron) {
-  console.log('[App] 开始初始化 Edge TTS 服务...');
-  edgeTTSService.init().then(() => {
-    console.log('[App] Edge TTS 服务初始化完成, 可用:', edgeTTSService.isAvailable());
+  console.log('[App] 开始初始化 Kerojiang TTS 服务...');
+  kerojiangTTSService.init().then(() => {
+    console.log('[App] Kerojiang TTS 服务初始化完成, 可用:', kerojiangTTSService.isAvailable());
   }).catch(err => {
-    console.error('[App] Edge TTS 服务初始化失败:', err);
+    console.error('[App] Kerojiang TTS 服务初始化失败:', err);
   });
 }
 

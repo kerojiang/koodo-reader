@@ -107,7 +107,7 @@ const S_TO_NS = 1e9;
 const WSS_URL = `wss://${BASE_URL}/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}`;
 const VOICE_LIST_URL = `https://${BASE_URL}/voices/list?trustedclienttoken=${TRUSTED_CLIENT_TOKEN}`;
 
-class EdgeTTSConnection {
+class KerojiangTTSConnection {
   constructor() {
     this.ws = null;
     this.isConnected = false;
@@ -439,8 +439,8 @@ class EdgeTTSConnection {
   }
 }
 
-// EdgeTTS 主类 - 管理连接池
-class EdgeTTS {
+// KerojiangTTS 主类 - 管理连接池
+class KerojiangTTS {
   constructor() {
     this.connection = null;
     this.useCount = 0;
@@ -451,7 +451,7 @@ class EdgeTTS {
   async getConnection() {
     try {
       // 创建新连接（旧连接已被服务端关闭）
-      this.connection = new EdgeTTSConnection();
+      this.connection = new KerojiangTTSConnection();
       await this.connection.connect();
 
       if (!this.connection || !this.connection.ws) {
@@ -596,7 +596,7 @@ class EdgeTTS {
         let connection;
         try {
           // 每次生成独立的连接实例，避免并发请求时共享 this.connection 导致竞争
-          connection = new EdgeTTSConnection();
+          connection = new KerojiangTTSConnection();
           await connection.connect();
           if (!connection || !connection.ws) {
             throw new Error(`Connection was not established for chunk ${i + 1}`);
@@ -692,7 +692,7 @@ class EdgeTTS {
         lang: voice.Locale,
         displayName: voice.FriendlyName,
         FriendlyName: voice.FriendlyName,
-        plugin: 'edge-tts',
+        plugin: 'kerojiang-tts',
         gender: voice.Gender,
         voiceInfo: voice,
       }));
@@ -712,45 +712,45 @@ class EdgeTTS {
 }
 
 // 导出单例
-const edgeTTS = new EdgeTTS();
+const kerojiangTTS = new KerojiangTTS();
 
-// Edge TTS 语音列表缓存（避免重复网络请求）
-let cachedEdgeTTSVoices = null;
-let cachedEdgeTTSVoicesPromise = null;
+// Kerojiang TTS 语音列表缓存（避免重复网络请求）
+let kerojiangCachedVoices = null;
+let kerojiangCachedVoicesPromise = null;
 
 // 获取缓存的语音列表
-async function getCachedEdgeTTSVoices() {
+async function kerojiangGetCachedVoices() {
   // 如果已有缓存，直接返回
-  if (cachedEdgeTTSVoices) {
-    console.log('[Edge TTS] Returning cached voices, count:', cachedEdgeTTSVoices.length);
-    return cachedEdgeTTSVoices;
+  if (kerojiangCachedVoices) {
+    console.log('[KerojiangTTS] Returning cached voices, count:', kerojiangCachedVoices.length);
+    return kerojiangCachedVoices;
   }
   
   // 如果正在请求中，等待该请求完成
-  if (cachedEdgeTTSVoicesPromise) {
-    console.log('[Edge TTS] Waiting for pending voices request...');
-    return cachedEdgeTTSVoicesPromise;
+  if (kerojiangCachedVoicesPromise) {
+    console.log('[KerojiangTTS] Waiting for pending voices request...');
+    return kerojiangCachedVoicesPromise;
   }
   
   // 首次请求，发起请求并缓存 Promise
-  console.log('[Edge TTS] First time fetching voices, caching result...');
-  cachedEdgeTTSVoicesPromise = edgeTTS.listVoices();
+  console.log('[KerojiangTTS] First time fetching voices, caching result...');
+  kerojiangCachedVoicesPromise = kerojiangTTS.listVoices();
   
   try {
-    const voices = await cachedEdgeTTSVoicesPromise;
-    cachedEdgeTTSVoices = voices;
-    console.log('[Edge TTS] Voices cached, count:', voices.length);
+    const voices = await kerojiangCachedVoicesPromise;
+    kerojiangCachedVoices = voices;
+    console.log('[KerojiangTTS] Voices cached, count:', voices.length);
     return voices;
   } catch (error) {
-    console.error('[Edge TTS] Failed to cache voices:', error.message);
+    console.error('[KerojiangTTS] Failed to cache voices:', error.message);
     throw error;
   } finally {
-    cachedEdgeTTSVoicesPromise = null;
+    kerojiangCachedVoicesPromise = null;
   }
 }
 
-// 清除所有 Edge TTS 缓存
-const clearAllEdgeTTSCache = () => {
+// 清除所有 Kerojiang TTS 缓存
+const kerojiangClearAllTtsCache = () => {
   try {
     const audioDir = path.join(app.getPath('temp'), 'koodo-reader-tts');
     if (fs.existsSync(audioDir)) {
@@ -769,8 +769,8 @@ const clearAllEdgeTTSCache = () => {
   }
 };
 
-// 清除指定书籍的 Edge TTS 缓存
-const clearBookEdgeTTSCache = (bookName) => {
+// 清除指定书籍的 Kerojiang TTS 缓存
+const kerojiangClearBookTtsCache = (bookName) => {
   try {
     const audioDir = path.join(app.getPath('temp'), 'koodo-reader-tts');
     if (fs.existsSync(audioDir) && bookName) {
@@ -793,7 +793,7 @@ const clearBookEdgeTTSCache = (bookName) => {
 
 // 进程退出时清理资源
 process.on('exit', () => {
-  edgeTTS.close();
+  kerojiangTTS.close();
 });
 
 const singleInstance = app.requestSingleInstanceLock();
@@ -1254,7 +1254,7 @@ const createMainWin = () => {
     return global.getAudioPath(text, speed, dirPath, config);
   });
 
-  ipcMain.handle("generate-edge-tts", async (event, options) => {
+  ipcMain.handle("kerojiang-generate-tts", async (event, options) => {
     try {
       if (!options || typeof options !== 'object') {
         console.error('[Edge TTS IPC] Invalid options:', options);
@@ -1279,7 +1279,7 @@ const createMainWin = () => {
 
       const outputDir = path.join(app.getPath('temp'), 'koodo-reader-tts');
 
-      const audioPath = await edgeTTS.generateAudio(
+      const audioPath = await kerojiangTTS.generateAudio(
         text,
         voiceName || DEFAULT_VOICE,
         speed || 1.0,
@@ -1300,10 +1300,10 @@ const createMainWin = () => {
     }
   });
 
-  ipcMain.handle("list-edge-tts-voices", async (event, options) => {
+  ipcMain.handle("kerojiang-list-tts-voices", async (event, options) => {
     try {
       // 使用缓存的语音列表，避免重复网络请求
-      const voices = await getCachedEdgeTTSVoices();
+      const voices = await kerojiangGetCachedVoices();
       return voices;
     } catch (error) {
       console.error('[Edge TTS IPC] List voices failed:', error);
@@ -1312,7 +1312,7 @@ const createMainWin = () => {
     }
   });
 
-  ipcMain.handle("clear-edge-tts-audio", async (event, options = {}) => {
+  ipcMain.handle("kerojiang-clear-tts-audio", async (event, options = {}) => {
     try {
       const { bookName } = options;
       const audioDir = path.join(app.getPath('temp'), 'koodo-reader-tts');
@@ -2019,15 +2019,15 @@ const createMainWin = () => {
 };
 
 app.on("ready", () => {
-  // 程序启动时清除所有 Edge TTS 缓存
-  clearAllEdgeTTSCache();
+  // 程序启动时清除所有 Kerojiang TTS 缓存
+  kerojiangClearAllTtsCache();
   createMainWin();
 });
 app.on("before-quit", () => {
   isQuitting = true;
   destroyDiscordRPC();
-  // 程序关闭时清除所有 Edge TTS 缓存
-  clearAllEdgeTTSCache();
+  // 程序关闭时清除所有 Kerojiang TTS 缓存
+  kerojiangClearAllTtsCache();
 });
 app.on("window-all-closed", () => {
   app.quit();

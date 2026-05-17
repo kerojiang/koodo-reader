@@ -22,7 +22,7 @@ export interface TextToSpeechState {
   voiceLocale: string;
   languageList: string[];
   voiceList: any;
-  isEdgeTtsAvailable: boolean;
+  isKerojiangTtsAvailable: boolean;
   multiRoleEnabled: boolean;
   multiRoleVoiceType: string;
   multiRoleNarratorVoice: string;

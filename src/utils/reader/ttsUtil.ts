@@ -114,13 +114,13 @@ class TTSUtil {
 
       const audioNode = audioNodeList[firstIndex];
 
-      // 如果是 Edge TTS 或非官方 AI 语音，直接生成
-      if (audioNode.voiceEngine !== "official-ai-voice-plugin") {
-        let plugin: any = null;
-        let voice: any = null;
+        // 如果是 Kerojiang TTS 或非官方 AI 语音，直接生成
+        if (audioNode.voiceEngine !== "official-ai-voice-plugin") {
+          let plugin: any = null;
+          let voice: any = null;
 
-        if (audioNode.voiceEngine !== "edge-tts") {
-          plugin = plugins.find((item) => item.key === audioNode.voiceEngine);
+          if (audioNode.voiceEngine !== "kerojiang-tts") {
+            plugin = plugins.find((item) => item.key === audioNode.voiceEngine);
           if (!plugin) {
             console.error(
               `Plugin not found for engine: ${audioNode.voiceEngine}`
@@ -333,18 +333,18 @@ class TTSUtil {
         this.processingIndexes.add(index);
         const audioNode = audioNodeList[index];
 
-        // 核心修复：跳过空文本或空白字符节点，防止 edgetts 报错
+        // 核心修复：跳过空文本或空白字符节点，防止 kerojiang-tts 报错
         if (!audioNode.text || !audioNode.text.trim()) {
           console.log(`Skipping empty text node at index ${index}`);
           this.processingIndexes.delete(index);
           continue;
         }
 
-        // Edge TTS doesn't have a plugin, handle it specially
+        // Kerojiang TTS 没有 plugin，特殊处理
         let plugin: any = null;
         let voice: any = null;
 
-        if (audioNode.voiceEngine !== "edge-tts") {
+        if (audioNode.voiceEngine !== "kerojiang-tts") {
           plugin = plugins.find((item) => item.key === audioNode.voiceEngine);
           if (!plugin) {
             this.processingIndexes.delete(index);
@@ -358,7 +358,7 @@ class TTSUtil {
             return "error";
           }
         } else {
-          // For Edge TTS, pass voiceName through plugin object
+          // For Kerojiang TTS, pass voiceName through plugin object
           plugin = { voiceName: audioNode.voiceName };
         }
 
@@ -413,14 +413,14 @@ class TTSUtil {
     window.require("electron").ipcRenderer.invoke("clear-tts");
   }
 
-  static async clearEdgeTtsAudio(bookName?: string) {
+  static async clearKerojiangTtsAudio(bookName?: string) {
     if (!isElectron) return;
     try {
       await window
         .require("electron")
-        .ipcRenderer.invoke("clear-edge-tts-audio", bookName ? { bookName } : {});
+        .ipcRenderer.invoke("kerojiang-clear-tts-audio", bookName ? { bookName } : {});
     } catch (error) {
-      console.error("Error clearing Edge TTS audio:", error);
+      console.error("Error clearing Kerojiang TTS audio:", error);
     }
   }
   static getAudioPaths() {
@@ -451,9 +451,9 @@ class TTSUtil {
         return res.data.audio_base64;
       }
       return "";
-    } else if (voiceEngine === "edge-tts") {
-      // Use built-in Edge TTS
-      console.log('[TTSUtil.getAudioPath] Edge TTS 调用参数:', {
+    } else if (voiceEngine === "kerojiang-tts") {
+      // Use built-in Kerojiang TTS
+      console.log('[TTSUtil.getAudioPath] Kerojiang TTS 调用参数:', {
         bookName: this.currentBookName,
         chapterIndex: this.currentChapterIndex,
         part: part,
@@ -462,7 +462,7 @@ class TTSUtil {
 
       let audioPath = await window
         .require("electron")
-        .ipcRenderer.invoke("generate-edge-tts", {
+        .ipcRenderer.invoke("kerojiang-generate-tts", {
           text: text,
           speed: (speed + 100) / 100,
           voiceName: plugin ? plugin.voiceName : 'zh-CN-XiaoxiaoNeural',

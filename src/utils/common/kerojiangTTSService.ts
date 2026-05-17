@@ -1,7 +1,7 @@
-// Edge TTS 服务初始化模块
+// Kerojiang TTS 服务初始化模块
 // 在应用启动时调用，后台检查服务并缓存语音列表
 
-class EdgeTTSService {
+class KerojiangTTSService {
   private initialized: boolean = false;
   private available: boolean = false;
   private voices: any[] = [];
@@ -24,43 +24,43 @@ class EdgeTTSService {
     }
 
     try {
-      console.log('[EdgeTTS Service] 开始初始化...');
+      console.log('[KerojiangTTS] 开始初始化...');
       
       // 检查是否在 Electron 环境
       let ipcRenderer: any;
       try {
         const electron = typeof window !== 'undefined' ? window.require('electron') : null;
         if (!electron) {
-          console.log('[EdgeTTS Service] 非 Electron 环境');
+          console.log('[KerojiangTTS] 非 Electron 环境');
           this.initialized = true;
           return;
         }
         ipcRenderer = electron.ipcRenderer;
       } catch (e: any) {
-        console.log('[EdgeTTS Service] 无法获取 electron:', e?.message);
+        console.log('[KerojiangTTS] 无法获取 electron:', e?.message);
         this.initialized = true;
         return;
       }
 
       // 调用主进程获取语音列表
-      console.log('[EdgeTTS Service] 正在获取语音列表...');
-      const voices = await ipcRenderer.invoke('list-edge-tts-voices');
+      console.log('[KerojiangTTS] 正在获取语音列表...');
+      const voices = await ipcRenderer.invoke('kerojiang-list-tts-voices');
 
       if (Array.isArray(voices) && voices.length > 0) {
         this.voices = voices;
         this.available = true;
-        console.log('[EdgeTTS Service] 初始化成功，语音数量:', voices.length);
+        console.log('[KerojiangTTS] 初始化成功，语音数量:', voices.length);
 
         // 提取语言列表
         this._buildLanguageList();
       } else {
-        console.warn('[EdgeTTS Service] 返回空语音列表');
+        console.warn('[KerojiangTTS] 返回空语音列表');
       }
     } catch (error: any) {
-      console.error('[EdgeTTS Service] 初始化失败:', error?.message);
+      console.error('[KerojiangTTS] 初始化失败:', error?.message);
     } finally {
       this.initialized = true;
-      console.log('[EdgeTTS Service] 初始化完成');
+      console.log('[KerojiangTTS] 初始化完成');
     }
   }
 
@@ -76,7 +76,7 @@ class EdgeTTSService {
       }
     });
     this.languages = Array.from(langSet);
-    console.log('[EdgeTTS Service] 语言列表:', this.languages);
+    console.log('[KerojiangTTS] 语言列表:', this.languages);
   }
 
   // 获取语音列表（带过滤）
@@ -117,4 +117,4 @@ class EdgeTTSService {
   }
 }
 
-export default new EdgeTTSService();
+export default new KerojiangTTSService();
