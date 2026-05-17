@@ -25,6 +25,7 @@ import PopupNote from "../../components/popups/popupNote";
 import toast from "react-hot-toast";
 import { supportedFormats } from "../../utils/common";
 import kerojiangTTSService from "../../utils/common/kerojiangTTSService";
+import Footer from "../../components/footer";
 class Manager extends React.Component<ManagerProps, ManagerState> {
   timer!: NodeJS.Timeout;
   constructor(props: ManagerProps) {
@@ -122,7 +123,7 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
               height: "360px",
             }}
           >
-            <PopupNote {...PopupProps} />
+            <PopupNote {...(PopupProps as any)} />
           </div>
         )}
 
@@ -202,8 +203,17 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
           </div>
         )}
         <Sidebar />
-        <Toaster />
-        <Header {...{ handleDrag: this.handleDrag }} />
+        <Toaster
+          toastOptions={{
+            style: {
+              wordWrap: "break-word",
+              wordBreak: "break-word",
+              whiteSpace: "normal",
+              overflowWrap: "break-word",
+            },
+          }}
+        />
+        <Header {...({ handleDrag: this.handleDrag } as any)} />
         {this.props.isOpenDeleteDialog && <DeleteDialog />}
         {this.props.isOpenEditDialog && <EditDialog />}
         {this.props.isOpenAddDialog && <AddDialog />}
@@ -227,6 +237,7 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
             ))}
           </Switch>
         )}
+        <Footer />
       </div>
     );
   }

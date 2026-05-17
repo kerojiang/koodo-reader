@@ -88,6 +88,27 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
       return;
     }
     if (
+      !isElectron &&
+      driveList.find((item) => item.value === targetDrive)?.needExtension
+    ) {
+      let result = await vexComfirmAsync(
+        "Due to browser security restrictions, you may not be able to use this data source properly. If you encounter any issues, you can resolve them by installing our browser extension.",
+        "Confirm",
+        "Install extension"
+      );
+      if (!result) {
+        if (
+          ConfigService.getReaderConfig("lang") &&
+          ConfigService.getReaderConfig("lang").startsWith("zh")
+        ) {
+          openExternalUrl(getWebsiteUrl() + "/zh/use-extension");
+        } else {
+          openExternalUrl(getWebsiteUrl() + "/en/use-extension");
+        }
+        return;
+      }
+    }
+    if (
       driveList.find((item) => item.value === targetDrive)?.isPro &&
       !this.props.isAuthed
     ) {
@@ -123,14 +144,19 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
         this.props.handleSettingDrive("");
         return;
       }
+      SyncService.removeSyncUtil(settingDrive);
+      removeCloudConfig(settingDrive);
+      if (isElectron) {
+        const { ipcRenderer } = window.require("electron");
+        await ipcRenderer.invoke("cloud-close", {
+          service: settingDrive,
+        });
+      }
       ConfigService.setListConfig(settingDrive, "dataSourceList");
       toast.success(i18n.t("Binding successful"), { id: "adding-sync-id" });
       if (this.props.isAuthed && !ConfigService.getItem("defaultSyncOption")) {
         ConfigService.setItem("defaultSyncOption", settingDrive);
-        if (
-          ConfigService.getReaderConfig("isEnableKoodoSync") === "yes" &&
-          this.props.userInfo.default_sync_option !== settingDrive
-        ) {
+        if (ConfigService.getReaderConfig("isEnableKoodoSync") === "yes") {
           resetKoodoSync();
         }
         this.props.handleFetchDefaultSyncOption();
@@ -190,11 +216,12 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
     }
     toast.success(this.props.t("Deletion successful"));
   };
-  handleSetDefaultSyncOption = async (event: any) => {
-    if (!event.target.value) {
+  handleSetDefaultSyncOption = async (newValue: string) => {
+    if (!newValue) {
       return;
     }
-    ConfigService.setItem("defaultSyncOption", event.target.value);
+
+    ConfigService.setItem("defaultSyncOption", newValue);
     if (ConfigService.getReaderConfig("isEnableKoodoSync") === "yes") {
       resetKoodoSync();
     }
@@ -256,12 +283,17 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
         this.state.driveConfig.token
       );
     }
+    SyncService.removeSyncUtil(this.props.settingDrive);
+    removeCloudConfig(this.props.settingDrive);
+    if (isElectron) {
+      const { ipcRenderer } = window.require("electron");
+      await ipcRenderer.invoke("cloud-close", {
+        service: this.props.settingDrive,
+      });
+    }
     if (this.props.isAuthed && !ConfigService.getItem("defaultSyncOption")) {
       ConfigService.setItem("defaultSyncOption", this.props.settingDrive);
-      if (
-        ConfigService.getReaderConfig("isEnableKoodoSync") === "yes" &&
-        this.props.userInfo.default_sync_option !== this.props.settingDrive
-      ) {
+      if (ConfigService.getReaderConfig("isEnableKoodoSync") === "yes") {
         resetKoodoSync();
       }
       this.props.handleFetchDefaultSyncOption();
@@ -297,12 +329,12 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
                       default_sync_option: this.props.defaultSyncOption,
                       default_sync_token: encryptToken || "",
                     });
-                    await this.props.handleFetchUserInfo();
+                    let userInfo = await this.props.handleFetchUserInfo();
                     if (
                       ConfigService.getReaderConfig("isEnableKoodoSync") ===
                       "yes"
                     ) {
-                      this.props.cloudSyncFunc();
+                      this.props.cloudSyncFunc(userInfo);
                     }
 
                     break;
@@ -451,6 +483,19 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
                           }}
                         >
                           {this.props.t("Example")}: {item.example}
+                        </div>
+                      )}
+                      {item.note && (
+                        <div
+                          style={{
+                            marginTop: "5px",
+                            marginBottom: "2px",
+                            marginLeft: "2px",
+                            fontSize: "12px",
+                            opacity: 0.8,
+                          }}
+                        >
+                          {this.props.t(item.note)}
                         </div>
                       )}
                     </div>
@@ -651,6 +696,7 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
           <select
             name=""
             className="lang-setting-dropdown"
+            value={this.props.settingDrive}
             onChange={this.handleAddDataSource}
           >
             {[
@@ -681,9 +727,6 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
                   value={item.value}
                   key={item.value}
                   className="lang-setting-option"
-                  selected={
-                    item.value === this.props.settingDrive ? true : false
-                  }
                 >
                   {this.props.t(item.label) + (item.isPro ? " (Pro)" : "")}
                 </option>
@@ -720,11 +763,11 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
             <select
               name=""
               className="lang-setting-dropdown"
+              value={this.props.defaultSyncOption}
               onChange={async (event) => {
                 event.preventDefault();
                 const newValue = event.target.value;
                 const currentValue = this.props.defaultSyncOption;
-
                 let onlineBooks: Book[] = [];
                 for (let i = 0; i < this.props.books.length; i++) {
                   if (
@@ -742,14 +785,12 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
                     "Some of your books are currently not downloaded to the local. Changing the default sync option may lead to data loss. We recommend downloading all books to the local by turn on Auto download cloud books in the setting before changing the default sync option. Click 'OK' to proceed without downloading."
                   );
                   if (result) {
-                    this.handleSetDefaultSyncOption({
-                      target: { value: newValue },
-                    });
+                    this.handleSetDefaultSyncOption(newValue);
                   } else {
                     event.target.value = currentValue;
                   }
                 } else {
-                  this.handleSetDefaultSyncOption(event);
+                  this.handleSetDefaultSyncOption(newValue);
                 }
               }}
             >
@@ -768,9 +809,6 @@ class SyncSetting extends React.Component<SettingInfoProps, SettingInfoState> {
                     value={item.value}
                     key={item.value}
                     className="lang-setting-option"
-                    selected={
-                      item.value === this.props.defaultSyncOption ? true : false
-                    }
                   >
                     {this.props.t(item.label) + (item.isPro ? " (Pro)" : "")}
                   </option>

@@ -12,7 +12,6 @@ class SpeechDialog extends React.Component<
     super(props);
     this.state = {
       isShowExportAll: false,
-      isConvertPDF: ConfigService.getReaderConfig("isConvertPDF") === "yes",
     };
   }
   componentDidMount(): void {
@@ -27,13 +26,13 @@ class SpeechDialog extends React.Component<
             this.props.handleSpeechDialog(true);
           }}
           style={{
-            right: "65px",
             left: "auto",
             top: "auto",
             bottom: "60px",
             width: "300px",
             height: "320px",
             overflowY: "scroll",
+            right: this.props.isSettingLocked ? 370 : 65,
           }}
         >
           {this.props.plugins && <TextToSpeech />}

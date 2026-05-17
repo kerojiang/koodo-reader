@@ -25,6 +25,8 @@ const initState = {
           : "rgba(255,255,255,1)",
   noteKey: "",
   originalText: "",
+  originalSentence: "",
+  quoteText: "",
   htmlBook: null,
   scale: ConfigService.getReaderConfig("scale") || "1",
   margin: ConfigService.getReaderConfig("margin") || "0",
@@ -32,6 +34,8 @@ const initState = {
   readerMode: "double",
   isConvertOpen: false,
   isSpeechOpen: false,
+  speechStartText: "",
+  isSpeechAutoStart: false,
   isNavLocked: ConfigService.getReaderConfig("isNavLocked") === "yes",
   isSettingLocked: ConfigService.getReaderConfig("isSettingLocked") === "yes",
   isHideFooter: ConfigService.getReaderConfig("isHideFooter") === "yes",
@@ -48,6 +52,8 @@ const initState = {
     ConfigService.getReaderConfig("isHidePDFConvertButton") === "yes",
   isShowPageBorder: ConfigService.getReaderConfig("isShowPageBorder") === "yes",
   textOrientation: ConfigService.getReaderConfig("textOrientation") || "",
+  readerBackgroundImage:
+    ConfigService.getReaderConfig("readerBackgroundImage") || "",
 };
 export function reader(
   state = initState,
@@ -85,6 +91,16 @@ export function reader(
         ...state,
         isSpeechOpen: action.payload,
       };
+    case "HANDLE_SPEECH_START_TEXT":
+      return {
+        ...state,
+        speechStartText: action.payload,
+      };
+    case "HANDLE_SPEECH_AUTO_START":
+      return {
+        ...state,
+        isSpeechAutoStart: action.payload,
+      };
     case "HANDLE_CURRENT_CHAPTER_INDEX":
       return {
         ...state,
@@ -94,6 +110,16 @@ export function reader(
       return {
         ...state,
         originalText: action.payload,
+      };
+    case "HANDLE_QUOTE_TEXT":
+      return {
+        ...state,
+        quoteText: action.payload,
+      };
+    case "HANDLE_ORIGINAL_SENTENCE":
+      return {
+        ...state,
+        originalSentence: action.payload,
       };
     case "HANDLE_NAV_LOCK":
       return {
@@ -174,6 +200,11 @@ export function reader(
       return {
         ...state,
         backgroundColor: action.payload,
+      };
+    case "HANDLE_READER_BACKGROUND_IMAGE":
+      return {
+        ...state,
+        readerBackgroundImage: action.payload,
       };
     case "HANDLE_NOTE_KEY":
       return {

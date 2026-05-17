@@ -2,14 +2,11 @@ import React from "react";
 import { SettingInfoProps, SettingInfoState, AIModelConfig } from "./interface";
 import { Trans } from "react-i18next";
 import toast from "react-hot-toast";
-import DatabaseService from "../../../utils/storage/databaseService";
-import { aiProviderList } from "../../../constants/aiModelList";
+import { handleContextMenu, vexTextareaAsync } from "../../../utils/common";
 import {
-  defaultPrompts,
-  handleContextMenu,
-  vexTextareaAsync,
-} from "../../../utils/common";
-import { ConfigService } from "../../../assets/lib/kookit-extra-browser.min";
+  ConfigService,
+  KookitConfig,
+} from "../../../assets/lib/kookit-extra-browser.min";
 
 class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
   constructor(props: SettingInfoProps) {
@@ -40,8 +37,21 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
     };
   }
 
-  getAIPlugins = () => {
-    return (this.props.plugins || []).filter((item) => item.type === "ai");
+  getAIModels = () => {
+    // Load AI models from ConfigService
+    let aiModels: { key: string; displayName: string; config: any }[] = [];
+    const aiModelConfig =
+      ConfigService.getAllObjectConfig("aiModelConfig") || {};
+    Object.values(aiModelConfig).forEach((entry: any) => {
+      if (entry && entry.key) {
+        aiModels.push({
+          key: entry.key,
+          displayName: entry.displayName,
+          config: entry.config,
+        });
+      }
+    });
+    return aiModels;
   };
 
   parseConfig = (plugin: any): AIModelConfig | null => {
@@ -73,7 +83,9 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
   };
 
   handleProviderChange = (providerId: string) => {
-    const provider = aiProviderList.find((p) => p.id === providerId);
+    const provider = KookitConfig.AiProviderList.find(
+      (p) => p.id === providerId
+    );
     this.setState({
       selectedProvider: providerId,
       selectedModel: "",
@@ -100,7 +112,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
   };
 
   handleFetchModels = async () => {
-    const provider = aiProviderList.find(
+    const provider = KookitConfig.AiProviderList.find(
       (p) => p.id === this.state.selectedProvider
     );
     if (!provider || !provider.modelsEndpoint) {
@@ -131,16 +143,23 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
         throw new Error(`HTTP ${response.status}`);
       }
       const data = await response.json();
-      console.log(data);
-      const rawModels = data.data || data.models || data || [];
+      const rawModels = data.data || data.models || data.results || data || [];
+      if (rawModels.length === 0) {
+        toast.error(this.props.t("No models found"));
+        toast.error(
+          this.props.t(
+            "You can add models manually by selecting the custom model"
+          )
+        );
+        return;
+      }
       const models = rawModels.map((m: any) => ({
         id: m.id || m.model || m.name,
-        name: m.display_name || m.name || m.model || m.id,
+        name: m.id || m.display_name || m.name || m.model,
       }));
-      console.log(models, rawModels);
-      // models.sort((a: { name: string }, b: { name: string }) =>
-      //   a.name.localeCompare(b.name)
-      // );
+      models.sort((a: { name: string }, b: { name: string }) =>
+        a.name.localeCompare(b.name)
+      );
       this.setState({ fetchedModels: models });
       if (models.length > 0) {
         toast.success(this.props.t("Fetched models") + ": " + models.length);
@@ -215,7 +234,9 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
       toast.error(this.props.t("Please fill in all required fields"));
       return;
     }
-    const provider = aiProviderList.find((p) => p.id === selectedProvider);
+    const provider = KookitConfig.AiProviderList.find(
+      (p) => p.id === selectedProvider
+    );
     const config: AIModelConfig = {
       endpoint,
       modelName,
@@ -224,28 +245,18 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
       providerId: selectedProvider || "custom",
       providerName: provider ? provider.name : "Custom",
     };
-    const pluginRecord = {
-      key: isEditing ? editingKey : Date.now().toString(),
-      type: "ai",
+    const key = isEditing ? editingKey : Date.now().toString();
+    const modelEntry = {
+      key,
       displayName: modelName,
-      icon: "ai-assist",
-      version: "1.0.0",
-      autoValue: "",
-      config: config,
-      langList: [],
-      voiceList: [],
-      scriptSHA256: "",
-      script: "",
+      config,
     };
 
     try {
-      if (isEditing) {
-        await DatabaseService.updateRecord(pluginRecord, "plugins");
-        toast.success(this.props.t("Update successful"));
-      } else {
-        await DatabaseService.saveRecord(pluginRecord, "plugins");
-        toast.success(this.props.t("Addition successful"));
-      }
+      ConfigService.setObjectConfig(key, modelEntry, "aiModelConfig");
+      toast.success(
+        this.props.t(isEditing ? "Update successful" : "Addition successful")
+      );
       this.props.handleFetchPlugins();
       this.resetForm();
     } catch (e: any) {
@@ -253,10 +264,9 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
     }
   };
 
-  handleDelete = async (key: string) => {
+  handleDelete = (key: string) => {
     try {
-      await DatabaseService.deleteRecord(key, "plugins");
-      this.props.handleFetchPlugins();
+      ConfigService.deleteObjectConfig(key, "aiModelConfig");
       // 如果被删除的模型正被某个功能使用，则清空对应配置
       if (this.state.aiTranslateModel === key) {
         this.setState({ aiTranslateModel: "" });
@@ -278,7 +288,14 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
   };
 
   handleEdit = (plugin: any) => {
-    const config = this.parseConfig(plugin);
+    const entry = ConfigService.getObjectConfig(
+      plugin.key,
+      "aiModelConfig",
+      null
+    );
+    const config: AIModelConfig | null = entry
+      ? entry.config
+      : this.parseConfig(plugin);
     if (!config) {
       toast.error(this.props.t("Failed to parse model configuration"));
       return;
@@ -304,7 +321,8 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
     type: "aiTranslate" | "aiDict" | "aiAssistance"
   ) => {
     const configKey = type + "Prompt";
-    const currentValue = (this.state as any)[configKey] || defaultPrompts[type];
+    const currentValue =
+      (this.state as any)[configKey] || KookitConfig.DefaultPrompts[type];
     const result = await vexTextareaAsync(
       this.props.t("Edit prompt"),
       currentValue
@@ -318,7 +336,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
   renderAddForm = () => {
     const isCustom =
       !this.state.selectedProvider || this.state.selectedProvider === "custom";
-    const provider = aiProviderList.find(
+    const provider = KookitConfig.AiProviderList.find(
       (p) => p.id === this.state.selectedProvider
     );
     const hasModelsEndpoint = provider && provider.modelsEndpoint;
@@ -347,7 +365,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
             <option value="" className="lang-setting-option">
               {this.props.t("Please select")}
             </option>
-            {aiProviderList.map((p) => (
+            {KookitConfig.AiProviderList.map((p) => (
               <option key={p.id} value={p.id} className="lang-setting-option">
                 {this.props.t(p.name)}
               </option>
@@ -510,11 +528,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
   };
 
   render() {
-    const aiPlugins = this.getAIPlugins();
-    console.log(
-      this.state.aiAssistanceModel,
-      ConfigService.getReaderConfig("aiAssistanceModel")
-    );
+    const aiModels = this.getAIModels();
 
     return (
       <>
@@ -532,7 +546,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
           <Trans>Added AI models</Trans>
         </div>
 
-        {aiPlugins.length === 0 && (
+        {aiModels.length === 0 && (
           <div
             style={{
               textAlign: "center",
@@ -545,7 +559,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
           </div>
         )}
 
-        {aiPlugins.map((item) => {
+        {aiModels.map((item) => {
           const config = this.parseConfig(item);
           return (
             <div
@@ -632,7 +646,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
             <option value="" className="lang-setting-option">
               {this.props.t("Please select")}
             </option>
-            {aiPlugins.map((item) => (
+            {aiModels.map((item) => (
               <option
                 key={item.key}
                 value={item.key}
@@ -669,7 +683,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
             <option value="" className="lang-setting-option">
               {this.props.t("Please select")}
             </option>
-            {aiPlugins.map((item) => (
+            {aiModels.map((item) => (
               <option
                 key={item.key}
                 value={item.key}
@@ -706,7 +720,7 @@ class AISetting extends React.Component<SettingInfoProps, SettingInfoState> {
             <option value="" className="lang-setting-option">
               {this.props.t("Please select")}
             </option>
-            {aiPlugins.map((item) => (
+            {aiModels.map((item) => (
               <option
                 key={item.key}
                 value={item.key}

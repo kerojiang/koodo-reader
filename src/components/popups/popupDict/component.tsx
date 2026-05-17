@@ -10,11 +10,7 @@ import DOMPurify from "dompurify";
 import axios from "axios";
 import DictHistory from "../../../models/DictHistory";
 import { Trans } from "react-i18next";
-import {
-  defaultPrompts,
-  getWebsiteUrl,
-  openExternalUrl,
-} from "../../../utils/common";
+import { getWebsiteUrl, openExternalUrl } from "../../../utils/common";
 import toast from "react-hot-toast";
 import DatabaseService from "../../../utils/storage/databaseService";
 import {
@@ -23,8 +19,12 @@ import {
 } from "../../../utils/request/reader";
 import { chatStream } from "../../../utils/request/common";
 import { marked } from "marked";
+import { getIframeDoc } from "../../../utils/reader/docUtil";
 declare var window: any;
 class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
+  private aiTextAccumulator: string = "";
+  private updateInterval: ReturnType<typeof setInterval> | null = null;
+
   constructor(props: PopupDictProps) {
     super(props);
     this.state = {
@@ -39,6 +39,27 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
       aiAnswer: "",
       isAiWaiting: false,
     };
+  }
+
+  private startUpdateInterval() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+    }
+    this.updateInterval = setInterval(() => {
+      if (this.aiTextAccumulator) {
+        this.setState({ aiAnswer: this.aiTextAccumulator });
+      }
+    }, 150);
+  }
+
+  private stopUpdateInterval() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+    }
+    if (this.aiTextAccumulator) {
+      this.setState({ aiAnswer: this.aiTextAccumulator });
+    }
   }
   componentDidMount() {
     this.handleLookUp();
@@ -62,15 +83,16 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
           dictService: pluginList[0].key,
         });
         ConfigService.setReaderConfig("dictService", pluginList[0].key);
+        await new Promise((resolve) => setTimeout(resolve, 100));
       } else {
         this.setState({ isAddNew: true });
         return;
       }
     }
     this.handleDict(originalText);
-    this.handleRecordHistory(originalText);
+    this.handleRecordHistory(originalText, this.props.originalSentence || "");
   }
-  handleRecordHistory = async (text: string) => {
+  handleRecordHistory = async (text: string, sentence: string) => {
     let bookKey = this.props.currentBook.key;
     let bookLocation = ConfigService.getObjectConfig(
       bookKey,
@@ -78,7 +100,7 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
       {}
     );
     let chapter = bookLocation.chapterTitle;
-    let word = new DictHistory(bookKey, text, chapter);
+    let word = new DictHistory(bookKey, text, chapter, sentence);
     await DatabaseService.saveRecord(word, "words");
   };
   handleDict = async (text: string) => {
@@ -91,7 +113,6 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
           (item) => item.key === "custom-ai-dict-plugin"
         );
         if (!plugin) return;
-        let isFirst = true;
         let targetLang =
           this.state.dictTarget ||
           ConfigService.getReaderConfig("dictTarget") ||
@@ -100,37 +121,34 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
           ];
         let systemPrompt =
           ConfigService.getReaderConfig("aiDictPrompt") ||
-          defaultPrompts.aiDict;
+          KookitConfig.DefaultPrompts.aiDict;
         systemPrompt = systemPrompt.replace("{word}", text);
         systemPrompt = systemPrompt.replace("{to}", targetLang);
         let config: any = plugin.config || {};
+        this.aiTextAccumulator = "";
         this.setState({ aiAnswer: "", isAiWaiting: true });
+        this.startUpdateInterval();
         await chatStream(
           config.endpoint,
+          config.providerId,
           config.apiKey,
           config.modelId,
           systemPrompt,
           [],
           (result) => {
             if (result && result.done) {
-              this.setState({ isAiWaiting: false });
               return;
             }
             if (result && result.text) {
-              if (isFirst) {
-                this.setState({
-                  aiAnswer: result.text,
-                  isAiWaiting: false,
-                });
-                isFirst = false;
-              } else {
-                this.setState({
-                  aiAnswer: this.state.aiAnswer + result.text,
-                });
+              if (!this.aiTextAccumulator) {
+                this.setState({ isAiWaiting: false });
               }
+              this.aiTextAccumulator += result.text;
             }
           }
         );
+        this.stopUpdateInterval();
+        this.aiTextAccumulator = "";
         this.setState({ isAiWaiting: false, dictText: " " });
         return;
       } else if (
@@ -175,6 +193,12 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
 
       if (dictText.startsWith("https://")) {
         openExternalUrl(dictText, true, "dict");
+        let docs = getIframeDoc(this.props.currentBook.format);
+        for (let i = 0; i < docs.length; i++) {
+          let doc = docs[i];
+          if (!doc) continue;
+          doc.getSelection()?.empty();
+        }
       } else {
         this.setState(
           {
@@ -192,7 +216,8 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
       }
       if (
         this.props.isAuthed &&
-        ConfigService.getReaderConfig("isDisableAI") !== "yes"
+        ConfigService.getReaderConfig("isDisableAI") !== "yes" &&
+        this.state.dictService === "official-ai-dict-plugin"
       ) {
         this.handleDictionaryStream(text, isFullAnalysis);
       }
@@ -210,28 +235,32 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
   };
   handleDictionaryStream = async (text: string, isFullAnalysis: boolean) => {
     try {
+      this.aiTextAccumulator = "";
       this.setState({ aiAnswer: "", isAiWaiting: true });
-      let isFirst = true;
+      this.startUpdateInterval();
       let res = await getDictionaryStream(
         text,
         "auto",
         navigator.language,
+        this.props.originalSentence,
         isFullAnalysis,
         (result) => {
           if (result && result.text) {
-            if (isFirst) {
-              this.setState({ aiAnswer: result.text, isAiWaiting: false });
-              isFirst = false;
-            } else {
-              this.setState({ aiAnswer: this.state.aiAnswer + result.text });
+            if (!this.aiTextAccumulator) {
+              this.setState({ isAiWaiting: false });
             }
+            this.aiTextAccumulator += result.text;
           }
         }
       );
+      this.stopUpdateInterval();
+      this.aiTextAccumulator = "";
       if (res && res.done) {
         this.setState({ isAiWaiting: false });
       }
     } catch (error) {
+      this.stopUpdateInterval();
+      this.aiTextAccumulator = "";
       this.setState({ isAiWaiting: false });
       console.error(error);
     }
@@ -265,6 +294,7 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
             <select
               className="dict-service-selector"
               style={{ margin: 0 }}
+              value={this.state.dictService}
               onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
                 if (event.target.value === "add-new") {
                   this.props.handleOpenMenu(false);
@@ -291,9 +321,6 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
                       value={item.key}
                       key={item.key}
                       className="add-dialog-shelf-list-option"
-                      selected={
-                        this.state.dictService === item.key ? true : false
-                      }
                     >
                       {this.props.t(item.displayName)}
                     </option>
@@ -313,6 +340,7 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
             <select
               className="dict-service-selector"
               style={{ margin: 0 }}
+              value={this.state.dictTarget}
               onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
                 this.setState(
                   {
@@ -341,9 +369,6 @@ class PopupDict extends React.Component<PopupDictProps, PopupDictState> {
                       value={item.code}
                       key={item.code}
                       className="add-dialog-shelf-list-option"
-                      selected={
-                        this.state.dictTarget === item.code ? true : false
-                      }
                     >
                       {this.props.t(item["nativeLang"])}
                     </option>

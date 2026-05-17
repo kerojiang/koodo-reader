@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import i18n from "../../i18n";
 import { SSE } from "sse.js";
 import {
+  CommonTool,
   ConfigService,
   TokenService,
 } from "../../assets/lib/kookit-extra-browser.min";
@@ -72,8 +73,10 @@ export const handleClearToken = async () => {
   resetUserRequest();
   resetThirdpartyRequest();
 };
+
 export const chatStream = async (
   url: string,
+  providerId: string,
   apiKey: string,
   model: string,
   prompt: string,
@@ -91,8 +94,7 @@ export const chatStream = async (
         model,
         messages,
         stream: true,
-        enable_thinking: false,
-        thinking: false,
+        ...CommonTool.getDisableThinkingParams(providerId || ""),
       }),
       method: "POST",
     });
@@ -102,7 +104,6 @@ export const chatStream = async (
     });
 
     source.addEventListener("message", (e: any) => {
-      console.log(e);
       if (!e.data) return;
       if (e.data === "[DONE]") {
         source.close();
@@ -122,6 +123,10 @@ export const chatStream = async (
 
     source.addEventListener("error", (e: any) => {
       console.error("ChatStream error:", e);
+      toast.error(e.data ? JSON.stringify(e.data) : "Unknown error", {
+        id: "chat-stream-error",
+        duration: 5000,
+      });
       source.close();
       reject(e);
     });

@@ -8,7 +8,12 @@ import "./i18n";
 import store from "./store";
 import Router from "./router/index";
 import StyleUtil from "./utils/reader/styleUtil";
-import { initSystemFont, initTheme } from "./utils/reader/launchUtil";
+import {
+  initSystemFont,
+  initTheme,
+  applyCustomSystemCSS,
+  applyAppBackgroundImage,
+} from "./utils/reader/launchUtil";
 import { migrateThemeConfig } from "./utils/reader/themeUtil";
 import kerojiangTTSService from "./utils/common/kerojiangTTSService";
 import { isElectron } from "react-device-detect";
@@ -16,6 +21,8 @@ import { isElectron } from "react-device-detect";
 initTheme();
 initSystemFont();
 migrateThemeConfig();
+applyCustomSystemCSS();
+applyAppBackgroundImage();
 
 // 应用启动时立即在后台初始化 Kerojiang TTS 服务
 if (isElectron) {
@@ -27,10 +34,11 @@ if (isElectron) {
   });
 }
 
+const container = document.getElementById("root")!;
 ReactDOM.render(
   <Provider store={store}>
     <Router />
   </Provider>,
-  document.getElementById("root")
+  container
 );
 StyleUtil.applyTheme();

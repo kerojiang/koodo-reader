@@ -21,6 +21,7 @@ const log = require("electron-log/main");
 const os = require("os");
 const store = new Store();
 const fs = require("fs");
+const JSZip = require("jszip");
 const configDir = app.getPath("userData");
 const dirPath = path.join(configDir, "uploads");
 const packageJson = require("./package.json");
@@ -35,6 +36,7 @@ let linkWindow;
 let mainView;
 //multi tab
 // let mainViewList = []
+let readerWindowReadyToClose = false;
 let chatWindow;
 let dbConnection = {};
 let syncUtilCache = {};
@@ -56,7 +58,7 @@ function initDiscordRPC() {
       DiscordRPC.register(DISCORD_CLIENT_ID);
       const client = new DiscordRPC.Client({ transport: "ipc" });
       client.on("ready", () => {
-        console.log("Discord RPC connected");
+        console.info("Discord RPC connected");
         discordRPCClient = client;
         discordRPCReady = true;
         discordRPCConnecting = false;
@@ -813,8 +815,8 @@ let options = {
   x: parseInt(store.get("mainWinX")),
   y: parseInt(store.get("mainWinY")),
   backgroundColor: "#fff",
-  minWidth: 400,
-  minHeight: 300,
+  minWidth: 300,
+  minHeight: 100,
   webPreferences: {
     webSecurity: false,
     nodeIntegration: true,
@@ -865,6 +867,14 @@ const getDBConnection = (dbName, storagePath, sqlStatement) => {
     );
     dbConnection[dbName].pragma("journal_mode = WAL");
     dbConnection[dbName].exec(sqlStatement["createTableStatement"][dbName]);
+    if (sqlStatement["migrateStatement"][dbName]) {
+      let sqlList = sqlStatement["migrateStatement"][dbName];
+      for (let sql of sqlList) {
+        try {
+          dbConnection[dbName].exec(sql);
+        } catch (error) {}
+      }
+    }
   }
   return dbConnection[dbName];
 };
@@ -876,7 +886,10 @@ const getSyncUtil = async (config, isUseCache = true) => {
   return syncUtilCache[config.service];
 };
 const removeSyncUtil = (config) => {
-  delete syncUtilCache[config.service];
+  if (syncUtilCache[config.service]) {
+    syncUtilCache[config.service].clearQueue();
+    delete syncUtilCache[config.service];
+  }
 };
 const getPickerUtil = async (config, isUseCache = true) => {
   if (!isUseCache || !pickerUtilCache[config.service]) {
@@ -889,6 +902,124 @@ const removePickerUtil = (config) => {
   if (pickerUtilCache[config.service]) {
     pickerUtilCache[config.service] = null;
   }
+};
+const addDirectoryToZip = async (zip, sourceDir, zipDir) => {
+  const entries = await fs.promises.readdir(sourceDir, { withFileTypes: true });
+
+  if (entries.length === 0) {
+    zip.file(zipDir, null, { dir: true, createFolders: true });
+    return;
+  }
+
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const zipPath = path.posix.join(zipDir, entry.name);
+
+    if (entry.isDirectory()) {
+      await addDirectoryToZip(zip, sourcePath, zipPath);
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    const stats = await fs.promises.stat(sourcePath);
+    zip.file(zipPath, fs.createReadStream(sourcePath), {
+      binary: true,
+      createFolders: true,
+      date: stats.mtime,
+    });
+  }
+};
+const createBackupArchive = async (config) => {
+  const { dataPath, targetPath, fileName, databaseList = [] } = config;
+  const destinationPath = path.join(targetPath, fileName);
+  const tempPath = destinationPath + ".tmp";
+  const zip = new JSZip();
+
+  await fs.promises.mkdir(targetPath, { recursive: true });
+
+  if (fs.existsSync(tempPath)) {
+    await fs.promises.unlink(tempPath);
+  }
+
+  const directories = [
+    { source: path.join(dataPath, "book"), target: "book" },
+    { source: path.join(dataPath, "cover"), target: "cover" },
+  ];
+  for (const directory of directories) {
+    if (fs.existsSync(directory.source)) {
+      await addDirectoryToZip(zip, directory.source, directory.target);
+    }
+  }
+
+  const configFiles = ["config.json", "sync.json"];
+  for (const configFile of configFiles) {
+    const sourcePath = path.join(dataPath, "config", configFile);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+    const stats = await fs.promises.stat(sourcePath);
+    zip.file(
+      path.posix.join("config", configFile),
+      fs.createReadStream(sourcePath),
+      {
+        binary: true,
+        createFolders: true,
+        date: stats.mtime,
+      }
+    );
+  }
+
+  for (const dbName of databaseList) {
+    const sourcePath = path.join(dataPath, "config", `${dbName}.db`);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+    const stats = await fs.promises.stat(sourcePath);
+    zip.file(
+      path.posix.join("config", `${dbName}.db`),
+      fs.createReadStream(sourcePath),
+      {
+        binary: true,
+        createFolders: true,
+        date: stats.mtime,
+      }
+    );
+  }
+
+  await new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(tempPath);
+    const stream = zip.generateNodeStream({
+      type: "nodebuffer",
+      streamFiles: true,
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
+
+    const handleError = async (error) => {
+      output.destroy();
+      if (fs.existsSync(tempPath)) {
+        try {
+          await fs.promises.unlink(tempPath);
+        } catch (_) {}
+      }
+      reject(error);
+    };
+
+    output.on("close", resolve);
+    output.on("error", handleError);
+    stream.on("error", handleError);
+    stream.pipe(output);
+  });
+
+  if (fs.existsSync(destinationPath)) {
+    await fs.promises.unlink(destinationPath);
+  }
+
+  await fs.promises.rename(tempPath, destinationPath);
+  return destinationPath;
 };
 // Simple encryption function
 const encrypt = (text, key) => {
@@ -934,7 +1065,12 @@ const createTray = () => {
   const iconPath = isDev
     ? path.join(__dirname, "./public/assets/icon.png")
     : path.join(__dirname, "./build/assets/icon.png");
-  tray = new Tray(nativeImage.createFromPath(iconPath));
+  let trayIcon = nativeImage.createFromPath(iconPath);
+  if (os.platform() === "darwin") {
+    trayIcon = trayIcon.resize({ width: 16 });
+    trayIcon.setTemplateImage(true);
+  }
+  tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
     {
       label: "Open Koodo Reader",
@@ -1002,7 +1138,7 @@ const createMainWin = () => {
       let bounds = mainWin.getBounds();
       const currentDisplay = screen.getDisplayMatching(bounds);
       const primaryDisplay = screen.getPrimaryDisplay();
-      if (bounds.width > 0 && bounds.height > 0) {
+      if (bounds.width > 300 && bounds.height > 100) {
         store.set({
           mainWinWidth: bounds.width,
           mainWinHeight: bounds.height,
@@ -1122,7 +1258,7 @@ const createMainWin = () => {
 
       res.pipe(file);
       file.on("finish", () => {
-        console.log("\n下载完成！");
+        console.info("\n下载完成！");
         file.close();
 
         let updateExePath = path.join(app.getPath("temp"), fileName);
@@ -1159,7 +1295,6 @@ const createMainWin = () => {
   ipcMain.handle("open-book", (event, config) => {
     let { url, isMergeWord, isAutoFullscreen, isAutoMaximize, isPreventSleep } =
       config;
-    options.webPreferences.nodeIntegrationInSubFrames = true;
     if (isMergeWord) {
       delete options.backgroundColor;
     }
@@ -1173,7 +1308,7 @@ const createMainWin = () => {
     let id;
     if (isPreventSleep === "yes") {
       id = powerSaveBlocker.start("prevent-display-sleep");
-      console.log(powerSaveBlocker.isStarted(id));
+      console.info(powerSaveBlocker.isStarted(id));
     }
     if (readerWindow) {
       readerWindowList.push(readerWindow);
@@ -1210,12 +1345,24 @@ const createMainWin = () => {
     if (store.get("isAlwaysOnTop") === "yes") {
       readerWindow.setAlwaysOnTop(true);
     }
+    readerWindowReadyToClose = false;
     readerWindow.on("close", (event) => {
+      // --- Step 1: ask renderer to flush reading-time data first ---
+      if (
+        !readerWindowReadyToClose &&
+        readerWindow &&
+        !readerWindow.isDestroyed()
+      ) {
+        event.preventDefault();
+        readerWindow.webContents.send("before-reader-close");
+        return;
+      }
+      // --- Step 2: actual close logic (reached after renderer replied) ---
       if (readerWindow && !readerWindow.isDestroyed()) {
         let bounds = readerWindow.getBounds();
         const currentDisplay = screen.getDisplayMatching(bounds);
         const primaryDisplay = screen.getPrimaryDisplay();
-        if (bounds.width > 0 && bounds.height > 0) {
+        if (bounds.width > 300 && bounds.height > 100) {
           store.set({
             windowWidth: bounds.width,
             windowHeight: bounds.height,
@@ -1241,6 +1388,20 @@ const createMainWin = () => {
       }
       if (mainWin && !mainWin.isDestroyed()) {
         mainWin.webContents.send("reading-finished", {});
+      }
+      if (discordRPCClient) {
+        try {
+          discordRPCClient.clearActivity();
+        } catch (e) {
+          console.warn("Failed to clear Discord activity:", e.message);
+        }
+      }
+    });
+    // Renderer finished flushing reading-time data — proceed with actual close
+    ipcMain.once("reader-close-ready", () => {
+      if (readerWindow && !readerWindow.isDestroyed()) {
+        readerWindowReadyToClose = true;
+        readerWindow.close();
       }
     });
 
@@ -1445,6 +1606,24 @@ const createMainWin = () => {
     });
     return path.filePaths[0];
   });
+  ipcMain.handle("select-book-path", async (event) => {
+    var result = await dialog.showOpenDialog({
+      properties: ["openFile"],
+    });
+    return result.filePaths[0];
+  });
+  ipcMain.handle("stream-backup-zip", async (event, config) => {
+    try {
+      await createBackupArchive(config);
+      return { ok: true };
+    } catch (error) {
+      console.error("Failed to create backup archive:", error);
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
   ipcMain.handle("encrypt-data", async (event, config) => {
     const { TokenService } =
       await import("./src/assets/lib/kookit-extra.min.mjs");
@@ -1612,11 +1791,11 @@ const createMainWin = () => {
     });
 
     if (result.canceled) {
-      console.log("User canceled the file selection");
+      console.info("User canceled the file selection");
       return [];
     } else {
       const filePaths = result.filePaths;
-      console.log("Selected file path:", filePaths);
+      console.info("Selected file path:", filePaths);
       return filePaths;
     }
   });
@@ -1837,29 +2016,36 @@ const createMainWin = () => {
     if (mainWin && mainView) {
       mainWin.contentView.removeChildView(mainView);
     }
+    if (discordRPCClient) {
+      try {
+        discordRPCClient.clearActivity();
+      } catch (e) {
+        console.warn("Failed to clear Discord activity:", e.message);
+      }
+    }
   });
   ipcMain.handle("enter-tab-fullscreen", () => {
     if (mainWin && mainView) {
       mainWin.setFullScreen(true);
-      console.log("enter full");
+      console.info("enter full");
     }
   });
   ipcMain.handle("exit-tab-fullscreen", () => {
     if (mainWin && mainView) {
       mainWin.setFullScreen(false);
-      console.log("exit full");
+      console.info("exit full");
     }
   });
   ipcMain.handle("enter-fullscreen", () => {
     if (readerWindow) {
       readerWindow.setFullScreen(true);
-      console.log("enter full");
+      console.info("enter full");
     }
   });
   ipcMain.handle("exit-fullscreen", () => {
-    if (readerWindow) {
+    if (readerWindow && !readerWindow.isDestroyed()) {
       readerWindow.setFullScreen(false);
-      console.log("exit full");
+      console.info("exit full");
     }
   });
   ipcMain.handle("open-url", (event, config) => {
@@ -1889,9 +2075,10 @@ const createMainWin = () => {
     let id;
     if (store.get("isPreventSleep") === "yes") {
       id = powerSaveBlocker.start("prevent-display-sleep");
-      console.log(powerSaveBlocker.isStarted(id));
+      console.info(powerSaveBlocker.isStarted(id));
     }
-    if (readerWindow) {
+    if (readerWindow && !readerWindow.isDestroyed()) {
+      readerWindowReadyToClose = true;
       readerWindow.close();
       if (store.get("isMergeWord") === "yes") {
         delete options.backgroundColor;
@@ -1906,7 +2093,6 @@ const createMainWin = () => {
         hasShadow: store.get("isMergeWord") !== "yes" ? false : true,
         transparent: store.get("isMergeWord") !== "yes" ? true : false,
       });
-      options.webPreferences.nodeIntegrationInSubFrames = true;
 
       store.set(
         "isMergeWord",
@@ -1921,12 +2107,24 @@ const createMainWin = () => {
       }
 
       readerWindow.loadURL(store.get("url"));
+      readerWindowReadyToClose = false;
       readerWindow.on("close", (event) => {
+        // --- Step 1: ask renderer to flush reading-time data first ---
+        if (
+          !readerWindowReadyToClose &&
+          readerWindow &&
+          !readerWindow.isDestroyed()
+        ) {
+          event.preventDefault();
+          readerWindow.webContents.send("before-reader-close");
+          return;
+        }
+        // --- Step 2: actual close logic (reached after renderer replied) ---
         if (!readerWindow.isDestroyed()) {
           let bounds = readerWindow.getBounds();
           const currentDisplay = screen.getDisplayMatching(bounds);
           const primaryDisplay = screen.getPrimaryDisplay();
-          if (bounds.width > 0 && bounds.height > 0) {
+          if (bounds.width > 300 && bounds.height > 100) {
             store.set({
               windowWidth: bounds.width,
               windowHeight: bounds.height,
@@ -1950,6 +2148,20 @@ const createMainWin = () => {
         }
         if (mainWin && !mainWin.isDestroyed()) {
           mainWin.webContents.send("reading-finished", {});
+        }
+        if (discordRPCClient) {
+          try {
+            discordRPCClient.clearActivity();
+          } catch (e) {
+            console.warn("Failed to clear Discord activity:", e.message);
+          }
+        }
+      });
+      // Renderer finished flushing reading-time data — proceed with actual close
+      ipcMain.once("reader-close-ready", () => {
+        if (readerWindow && !readerWindow.isDestroyed()) {
+          readerWindowReadyToClose = true;
+          readerWindow.close();
         }
       });
     }
@@ -2120,6 +2332,6 @@ const handleCallback = (url) => {
     }
   } catch (error) {
     console.error("Error handling callback URL:", error);
-    console.log("Problematic URL:", url);
+    console.info("Problematic URL:", url);
   }
 };

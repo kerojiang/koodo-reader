@@ -9,6 +9,7 @@ class TTSUtil {
   static currentAudioPath: string = "";
   static audioPaths: { index: number; audioPath: string }[] = [];
   static isPaused: boolean = false;
+  static pausedMidSentence: boolean = false;
   static processingIndexes: Set<number> = new Set();
   static currentBookName: string = "";
   static currentChapterIndex: number = 0;
@@ -243,14 +244,12 @@ class TTSUtil {
           let plugin = plugins.find(
             (item) => item.key === audioNode.voiceEngine
           );
-          console.log(plugins, audioNode);
           if (!plugin) {
             return "error";
           }
           let voice = (plugin.voiceList as any[]).find(
             (voice) => voice.name === audioNode.voiceName
           );
-          console.log(plugin.voiceList, audioNode, "asf");
           if (!voice) {
             return "error";
           }
@@ -392,15 +391,26 @@ class TTSUtil {
     }
   }
   static async pauseAudio() {
-    if (this.player && this.player.stop) {
-      this.player.stop();
+    if (this.player) {
+      this.player.pause();
       this.isPaused = true;
+      this.pausedMidSentence = true;
     }
+  }
+  static resumeAudio(): boolean {
+    if (this.player && this.pausedMidSentence) {
+      this.player.play();
+      this.isPaused = false;
+      this.pausedMidSentence = false;
+      return true;
+    }
+    return false;
   }
   static async stopAudio() {
     if (this.player && this.player.stop) {
       this.player.stop();
       this.isPaused = true;
+      this.pausedMidSentence = false;
       setTimeout(() => {
         this.clearAudioPaths();
         this.audioPaths = [];
@@ -437,7 +447,6 @@ class TTSUtil {
     part?: number
   ) {
     if (voiceEngine === "official-ai-voice-plugin") {
-      console.log(text, voice);
       let res = await getTTSAudio(
         text,
         voice.language,
@@ -446,7 +455,6 @@ class TTSUtil {
         1.0,
         isFirst
       );
-      console.log(res);
       if (res && res.data && res.data.audio_base64) {
         return res.data.audio_base64;
       }
@@ -487,6 +495,7 @@ class TTSUtil {
   static setAudioPaths() {
     this.audioPaths = [];
     this.processingIndexes.clear();
+    this.pausedMidSentence = false;
   }
   static getPlayer() {
     return this.player;

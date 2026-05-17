@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run:*)",
       "Bash(npm list:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(node -e \"console.log\\(require\\(''./package.json''\\).dependencies.react || require\\(''./package.json''\\).devDependencies.react\\)\")"
     ]
   }
 }

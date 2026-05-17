@@ -13,7 +13,6 @@ import {
   OPDSDialogState,
 } from "./interface";
 import { supportedFormats } from "../../../utils/common";
-import { isElectron } from "react-device-detect";
 
 const BUILT_IN_CATALOGS: OPDSCatalog[] = [
   {
@@ -31,8 +30,6 @@ const BUILT_IN_CATALOGS: OPDSCatalog[] = [
     isElectronicOnly: true,
   },
 ];
-
-const OPDS_CATALOGS_KEY = "opdsCatalogs";
 
 const DOWNLOAD_TYPES: Record<string, string> = {
   "application/epub+zip": "epub",
@@ -166,11 +163,21 @@ async function fetchWithCatalogAuth(
   const challengeHeader = firstResponse.headers.get("www-authenticate") || "";
   let authorization = "";
   if (/^Digest\s+/i.test(challengeHeader)) {
-    authorization = buildDigestAuthHeader(url, method, catalog, challengeHeader);
+    authorization = buildDigestAuthHeader(
+      url,
+      method,
+      catalog,
+      challengeHeader
+    );
   } else if (/^Basic\s+/i.test(challengeHeader)) {
     authorization = getBasicAuthHeader(catalog);
   } else if (challengeHeader.toLowerCase().includes("digest")) {
-    authorization = buildDigestAuthHeader(url, method, catalog, challengeHeader);
+    authorization = buildDigestAuthHeader(
+      url,
+      method,
+      catalog,
+      challengeHeader
+    );
   } else {
     authorization = getBasicAuthHeader(catalog);
   }
@@ -431,19 +438,21 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
       newCatalogTitle: "",
       newCatalogUsername: "",
       newCatalogPassword: "",
+      isTesting: false,
     };
   }
 
   loadUserCatalogs(): OPDSCatalog[] {
     try {
-      return JSON.parse(ConfigService.getItem(OPDS_CATALOGS_KEY) || "[]");
+      const catalogMap = ConfigService.getAllObjectConfig("opdsCatalogs") || {};
+      const catalogList =
+        ConfigService.getAllListConfig("opdsCatalogList") || [];
+      return catalogList
+        .map((id: string) => catalogMap[id])
+        .filter(Boolean) as OPDSCatalog[];
     } catch {
       return [];
     }
-  }
-
-  saveUserCatalogs(catalogs: OPDSCatalog[]) {
-    ConfigService.setItem(OPDS_CATALOGS_KEY, JSON.stringify(catalogs));
   }
 
   handleClose = () => this.props.handleOPDSDialog(false);
@@ -480,7 +489,6 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
         l.rel === "subsection" ||
         l.rel === "related"
     );
-    console.log(navLink, "navLink");
     if (!navLink) return;
     this.setState((prev) => ({
       isLoading: true,
@@ -533,7 +541,6 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
   handleSearch = async () => {
     const { currentFeed, searchQuery, currentCatalogAuth } = this.state;
     if (!currentFeed?.searchTemplate || !searchQuery.trim()) return;
-    console.log(searchQuery, currentFeed);
     let searchUrl = currentFeed.searchTemplate;
     if (!searchUrl.includes("searchTerms")) {
       try {
@@ -553,15 +560,12 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
         // fallback to original
       }
     }
-    console.log(searchUrl, "searchUrl");
     let finalUrl = searchUrl
       .replace("{searchTerms}", encodeURIComponent(searchQuery.trim()))
       .replace("%7BsearchTerms%7D", encodeURIComponent(searchQuery.trim()));
-    console.log(finalUrl, "finalUrl");
     this.setState({ isLoading: true, error: "" });
     try {
       const feed = await fetchOPDSFeed(finalUrl, currentCatalogAuth);
-      console.log(feed);
       this.setState((prev) => ({
         currentFeed: {
           ...feed,
@@ -617,36 +621,60 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
       newCatalogTitle,
       newCatalogUsername,
       newCatalogPassword,
-      userCatalogs,
     } = this.state;
     if (!newCatalogUrl.trim()) {
       toast.error(this.props.t("Please enter a valid URL"));
       return;
     }
+    const id = Date.now() + "";
     const newCatalog: OPDSCatalog = {
-      id: "user-" + Date.now(),
+      id,
       title: newCatalogTitle.trim() || newCatalogUrl.trim(),
       url: newCatalogUrl.trim(),
       username: newCatalogUsername.trim(),
       password: newCatalogPassword,
     };
-    const updated = [...userCatalogs, newCatalog];
-    this.saveUserCatalogs(updated);
+    ConfigService.setObjectConfig(id, newCatalog, "opdsCatalogs");
+    ConfigService.setListConfig(id, "opdsCatalogList");
     this.setState({
-      userCatalogs: updated,
+      userCatalogs: this.loadUserCatalogs(),
       isAddingCatalog: false,
       newCatalogUrl: "",
       newCatalogTitle: "",
       newCatalogUsername: "",
       newCatalogPassword: "",
+      isTesting: false,
     });
     toast.success(this.props.t("Added successfully"));
   };
 
+  handleTestCatalog = async () => {
+    const { newCatalogUrl, newCatalogUsername, newCatalogPassword } =
+      this.state;
+    if (!newCatalogUrl.trim()) {
+      toast.error(this.props.t("Please enter a valid URL"));
+      return;
+    }
+    this.setState({ isTesting: true });
+    try {
+      const auth =
+        newCatalogUsername || newCatalogPassword
+          ? { username: newCatalogUsername, password: newCatalogPassword }
+          : null;
+      await fetchOPDSFeed(newCatalogUrl.trim(), auth);
+      toast.success(this.props.t("Connection successful"));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(this.props.t("Connection failed") + ": " + msg);
+    } finally {
+      this.setState({ isTesting: false });
+    }
+  };
+
   handleRemoveCatalog = (id: string) => {
-    const updated = this.state.userCatalogs.filter((c) => c.id !== id);
-    this.saveUserCatalogs(updated);
-    this.setState({ userCatalogs: updated });
+    ConfigService.deleteObjectConfig(id, "opdsCatalogs");
+    ConfigService.deleteListConfig(id, "opdsCatalogList");
+    this.setState({ userCatalogs: this.loadUserCatalogs() });
   };
 
   getDownloadLinks(entry: OPDSEntry): OPDSLink[] {
@@ -668,6 +696,7 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
       newCatalogTitle,
       newCatalogUsername,
       newCatalogPassword,
+      isTesting,
     } = this.state;
 
     return (
@@ -727,58 +756,62 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
               style={{
                 display: "flex",
                 gap: "10px",
-                padding: "0 25px",
-                justifyContent: "flex-end",
+                justifyContent: "space-between",
                 marginTop: "10px",
                 paddingRight: "0px",
               }}
             >
               <span
-                className="voice-add-cancel"
-                onClick={() =>
-                  this.setState({
-                    isAddingCatalog: false,
-                    newCatalogUrl: "",
-                    newCatalogTitle: "",
-                    newCatalogUsername: "",
-                    newCatalogPassword: "",
-                  })
-                }
-              >
-                <Trans>Cancel</Trans>
-              </span>
-              <span
                 className="voice-add-confirm"
-                style={{ position: "static", fontSize: "14px" }}
-                onClick={this.handleAddCatalog}
+                style={{
+                  position: "static",
+                  fontSize: "14px",
+                  marginRight: "10px",
+                  opacity: isTesting ? 0.6 : 1,
+                  pointerEvents: isTesting ? "none" : "auto",
+                }}
+                onClick={this.handleTestCatalog}
               >
-                <Trans>Add</Trans>
+                {isTesting ? <Trans>Testing...</Trans> : <Trans>Test</Trans>}
               </span>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <span
+                  className="voice-add-cancel"
+                  onClick={() =>
+                    this.setState({
+                      isAddingCatalog: false,
+                      newCatalogUrl: "",
+                      newCatalogTitle: "",
+                      newCatalogUsername: "",
+                      newCatalogPassword: "",
+                      isTesting: false,
+                    })
+                  }
+                >
+                  <Trans>Cancel</Trans>
+                </span>
+
+                <span
+                  className="voice-add-confirm"
+                  style={{ position: "static", fontSize: "14px" }}
+                  onClick={this.handleAddCatalog}
+                >
+                  <Trans>Add</Trans>
+                </span>
+              </div>
             </div>
           </div>
         ) : null}
-        {/* Popular catalogs */}
-        <div className="opds-section-label">
-          <Trans>Popular OPDS Catalogs</Trans>
-        </div>
-        {BUILT_IN_CATALOGS.filter((item) => {
-          if (item.isElectronicOnly) {
-            return isElectron;
-          }
-          return true;
-        }).map((catalog) => (
-          <div
-            key={catalog.id}
-            className="cloud-drive-item"
-            onClick={() => this.openCatalog(catalog)}
-          >
-            <span className="cloud-drive-label">{catalog.title}</span>
-            <span className="icon-dropdown import-dialog-more-file"></span>
-          </div>
-        ))}
 
         {/* User catalogs */}
-        {userCatalogs.length > 0 && (
+        {userCatalogs.length > 0 ? (
           <>
             <div className="opds-section-label">
               <Trans>My OPDS Catalogs</Trans>
@@ -806,6 +839,17 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
               </div>
             ))}
           </>
+        ) : (
+          <div
+            style={{
+              textAlign: "center",
+              opacity: 0.5,
+              padding: "30px 0",
+              fontSize: "14px",
+            }}
+          >
+            <Trans>No OPDS added yet</Trans>
+          </div>
         )}
       </>
     );
@@ -940,7 +984,6 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
   renderDetailView() {
     const { selectedBook, currentCatalogAuth } = this.state;
     if (!selectedBook) return null;
-    console.log(selectedBook);
     const formatUpdated = (iso: string) => {
       if (!iso) return "";
       try {
@@ -1070,12 +1113,7 @@ class OPDSDialog extends React.Component<OPDSDialogProps, OPDSDialogState> {
     return (
       <div
         className="backup-page-container"
-        style={{
-          height: "450px",
-          top: "calc(50% - 225px)",
-          width: "500px",
-          left: "calc(50% - 250px)",
-        }}
+        style={{ height: "450px", top: "calc(50% - 225px)" }}
       >
         <div className="backup-dialog-title">{this.renderTitle()}</div>
 

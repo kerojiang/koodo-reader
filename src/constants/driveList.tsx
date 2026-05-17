@@ -6,6 +6,7 @@ export const driveList = [
     isPro: false,
     support: ["desktop", "browser", "phone"],
     scoped: false,
+    needExtension: true,
   },
   {
     label: "S3 Compatible",
@@ -14,6 +15,7 @@ export const driveList = [
     isPro: true,
     support: ["desktop", "browser", "phone"],
     scoped: false,
+    needExtension: true,
   },
   {
     label: "Docker",
@@ -147,6 +149,7 @@ interface ConfigItem {
   type: string;
   required?: boolean;
   example?: string;
+  note?: string;
 }
 
 // Type the driveInputConfig
@@ -341,6 +344,13 @@ export const driveInputConfig: DriveInputConfig = {
       value: "secretAccessKey",
       type: "password",
       required: true,
+    },
+    {
+      label: "Force path style",
+      value: "forcePathStyle",
+      type: "text",
+      required: false,
+      note: "Enter 1 to enable, leave empty to disable. Required for some S3 storage services that are not compatible with virtual host style URL",
     },
   ],
   google: [

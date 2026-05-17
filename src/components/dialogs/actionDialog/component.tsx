@@ -54,6 +54,18 @@ class ActionDialog extends React.Component<
     this.props.handleSelectedBooks([this.props.currentBook.key]);
     this.props.handleActionDialog(false);
   };
+  handleTopBook = () => {
+    ConfigService.setListConfig(this.props.currentBook.key, "topBooks");
+    toast.success(this.props.t("Addition successful"));
+    this.props.handleActionDialog(false);
+    this.props.handleFetchBooks();
+  };
+  handleCancelTopBook = () => {
+    ConfigService.deleteListConfig(this.props.currentBook.key, "topBooks");
+    toast.success(this.props.t("Cancellation successful"));
+    this.props.handleActionDialog(false);
+    this.props.handleFetchBooks();
+  };
   handleCancelLoveBook = () => {
     ConfigService.deleteListConfig(this.props.currentBook.key, "favoriteBooks");
     if (
@@ -170,6 +182,34 @@ class ActionDialog extends React.Component<
               </p>
             </div>
             <div
+              className="action-dialog-add"
+              onClick={() => {
+                if (
+                  ConfigService.getAllListConfig("topBooks").indexOf(
+                    this.props.currentBook.key
+                  ) > -1
+                ) {
+                  this.handleCancelTopBook();
+                } else {
+                  this.handleTopBook();
+                }
+              }}
+            >
+              <span
+                className="icon-sort-desc view-icon"
+                style={{ display: "inline-block", transform: "rotate(180deg)" }}
+              ></span>
+              <p className="action-name">
+                {ConfigService.getAllListConfig("topBooks").indexOf(
+                  this.props.currentBook.key
+                ) > -1 ? (
+                  <Trans>Unpin from top</Trans>
+                ) : (
+                  <Trans>Pin to top</Trans>
+                )}
+              </p>
+            </div>
+            <div
               className="action-dialog-delete"
               onClick={() => {
                 this.handleDeleteBook();
@@ -199,7 +239,7 @@ class ActionDialog extends React.Component<
             >
               <span
                 className="icon-idea-line view-icon"
-                style={{ fontSize: "17px" }}
+                style={{ fontSize: "18px" }}
               ></span>
               <p className="action-name" style={{ marginLeft: "12px" }}>
                 <Trans>Details</Trans>
@@ -231,7 +271,7 @@ class ActionDialog extends React.Component<
                     marginRight: "12px",
                     marginLeft: "3px",
                     transform: "rotate(90deg)",
-                    fontSize: "12px",
+                    fontSize: "14px",
                   }}
                 ></span>
                 <Trans>More actions</Trans>
@@ -244,7 +284,7 @@ class ActionDialog extends React.Component<
             </div>
           </div>
         </div>
-        <MoreAction {...moreActionProps} />
+        <MoreAction {...(moreActionProps as any)} />
       </>
     );
   }

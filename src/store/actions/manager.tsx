@@ -22,8 +22,6 @@ import { azureTTSVoiceList, officialVoiceList } from "../../constants/ttsList";
 import { langToName } from "../../utils/common";
 import { resetReaderRequest } from "../../utils/request/reader";
 import { resetThirdpartyRequest } from "../../utils/request/thirdparty";
-import Plugin from "../../models/Plugin";
-
 export function handleBooks(books: BookModel[]) {
   return { type: "HANDLE_BOOKS", payload: books };
 }
@@ -271,20 +269,44 @@ export function handleFetchUserInfo() {
         resetThirdpartyRequest();
       }
     }
+
     dispatch(handleUserInfo(userInfo));
+    return userInfo;
   };
 }
 export function handleFetchPlugins() {
   return async (dispatch: Dispatch) => {
-    DatabaseService.getAllRecords("plugins").then((pluginList) => {
+    DatabaseService.getAllRecords("plugins").then(async (pluginList) => {
       try {
-        if (ConfigService.getReaderConfig("aiTranslateModel")) {
-          let plugin: Plugin = pluginList.find(
-            (p: PluginModel) =>
-              p.key === ConfigService.getReaderConfig("aiTranslateModel")
+        // Migrate legacy AI model entries from DB to ConfigService
+        const legacyAiPlugins = pluginList.filter(
+          (p: PluginModel) => p.type === "ai"
+        );
+        for (const p of legacyAiPlugins) {
+          const existing = ConfigService.getObjectConfig(
+            p.key,
+            "aiModelConfig",
+            null
           );
-          let aiTranslateModel = plugin;
-          if (aiTranslateModel && aiTranslateModel.key) {
+          if (!existing) {
+            ConfigService.setObjectConfig(
+              p.key,
+              { key: p.key, displayName: p.displayName, config: p.config },
+              "aiModelConfig"
+            );
+          }
+          await DatabaseService.deleteRecord(p.key, "plugins");
+        }
+        pluginList = pluginList.filter((p: PluginModel) => p.type !== "ai");
+
+        if (ConfigService.getReaderConfig("aiTranslateModel")) {
+          const modelKey = ConfigService.getReaderConfig("aiTranslateModel");
+          const entry = ConfigService.getObjectConfig(
+            modelKey,
+            "aiModelConfig",
+            null
+          );
+          if (entry && entry.key) {
             let transPlugin = new PluginModel(
               "custom-ai-trans-plugin",
               "translation",
@@ -292,7 +314,7 @@ export function handleFetchPlugins() {
               "translation",
               "1.0.0",
               "",
-              aiTranslateModel.config || {},
+              entry.config || {},
               officialTranList,
               [],
               "",
@@ -302,12 +324,13 @@ export function handleFetchPlugins() {
           }
         }
         if (ConfigService.getReaderConfig("aiDictModel")) {
-          let plugin: Plugin = pluginList.find(
-            (p: PluginModel) =>
-              p.key === ConfigService.getReaderConfig("aiDictModel")
+          const modelKey = ConfigService.getReaderConfig("aiDictModel");
+          const entry = ConfigService.getObjectConfig(
+            modelKey,
+            "aiModelConfig",
+            null
           );
-          let aiDictModel = plugin;
-          if (aiDictModel && aiDictModel.key) {
+          if (entry && entry.key) {
             let dictPlugin = new PluginModel(
               "custom-ai-dict-plugin",
               "dictionary",
@@ -315,7 +338,7 @@ export function handleFetchPlugins() {
               "dict",
               "1.0.0",
               "",
-              aiDictModel.config || {},
+              entry.config || {},
               officialDictList,
               [],
               "",
@@ -325,12 +348,13 @@ export function handleFetchPlugins() {
           }
         }
         if (ConfigService.getReaderConfig("aiAssistanceModel")) {
-          let plugin: Plugin = pluginList.find(
-            (p: PluginModel) =>
-              p.key === ConfigService.getReaderConfig("aiAssistanceModel")
+          const modelKey = ConfigService.getReaderConfig("aiAssistanceModel");
+          const entry = ConfigService.getObjectConfig(
+            modelKey,
+            "aiModelConfig",
+            null
           );
-          let aiAssistanceModel = plugin;
-          if (aiAssistanceModel && aiAssistanceModel.key) {
+          if (entry && entry.key) {
             let assistPlugin = new PluginModel(
               "custom-ai-assistant-plugin",
               "assistant",
@@ -338,7 +362,7 @@ export function handleFetchPlugins() {
               "assistant",
               "1.0.0",
               "",
-              aiAssistanceModel.config || {},
+              entry.config || {},
               officialTranList,
               [],
               "",

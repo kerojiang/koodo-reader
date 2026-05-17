@@ -34,21 +34,6 @@ export const getTransStream = async (
   );
   return result;
 };
-export const getSummaryStream = async (
-  text: string,
-  to: string,
-  onMessage: (result) => void
-) => {
-  let readerRequest = await getReaderRequest();
-  let result = await readerRequest.getSummaryFetch(
-    {
-      text,
-      to,
-    },
-    onMessage
-  );
-  return result;
-};
 export const getAnswerStream = async (
   text: string,
   question: string,
@@ -72,6 +57,7 @@ export const getDictionaryStream = async (
   word: string,
   from: string,
   to: string,
+  sentence: string,
   isFullAnalysis: boolean,
   onMessage: (result) => void
 ) => {
@@ -81,6 +67,7 @@ export const getDictionaryStream = async (
       word,
       from,
       to,
+      sentence,
       is_full_analysis: isFullAnalysis,
     },
     onMessage
@@ -234,7 +221,7 @@ export const getTTSAudio = async (
       } else {
         let result = await vexComfirmAsync(
           i18n.t(
-            "You have exhausted your daily free AI voice character quota. Please upgrade to Pro to continue using this feature or wait until the quota resets. You can also use other TTS voices instead."
+            "Please upgrade to Pro to unlock more daily free quota or wait until the quota resets. You can also use other TTS voices instead."
           ) +
             " " +
             (response.data && response.data.ttl
@@ -291,7 +278,26 @@ export const getBatchTrans = async (
   }
   return response;
 };
-export const getSplitSentence = async (texts: string) => {
+export const getWordDefinitions = async (
+  texts: string[],
+  level: string,
+  lang: string
+) => {
+  let readerRequest = await getReaderRequest();
+  let response = await readerRequest.analyzeText({ texts, level, lang });
+  if (response.code === 200) {
+    return response;
+  } else if (response.code === 401) {
+    handleExitApp();
+    return;
+  } else {
+    toast.error(i18n.t("Fetch failed, error code") + ": " + response.msg);
+  }
+  return response;
+};
+export const getSplitSentence = async (
+  texts: { text: string; index: number }[]
+) => {
   let readerRequest = await getReaderRequest();
   let response = await readerRequest.getSplitSentence({ texts });
   if (response.code === 200) {
@@ -299,6 +305,19 @@ export const getSplitSentence = async (texts: string) => {
   } else if (response.code === 401) {
     handleExitApp();
     return response;
+  } else if (response.code === 20009) {
+    toast.error(
+      i18n.t("You have reached the daily limit for this feature.") +
+        " " +
+        i18n.t("AI multi-role speech is paused for now.") +
+        " " +
+        i18n.t("Your quota will be reset in", {
+          ttl:
+            response.data && response.data.ttl
+              ? (response.data.ttl / 3600).toFixed(1)
+              : "",
+        })
+    );
   } else {
     toast.error(i18n.t("Fetch failed, error code") + ": " + response.msg);
   }

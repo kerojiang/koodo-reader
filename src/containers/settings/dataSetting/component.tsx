@@ -29,7 +29,6 @@ import {
   dataSettingList,
   noteSyncSettingList,
 } from "../../../constants/settingList";
-
 declare var window: any;
 class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
   constructor(props: SettingInfoProps) {
@@ -83,10 +82,10 @@ class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
         const { ipcRenderer } = window.require("electron");
         const folder = await ipcRenderer.invoke("select-path");
         if (!folder) return;
-
-        ConfigService.setReaderConfig(
+        ConfigService.setObjectConfig(
           item.authConfigKey,
-          JSON.stringify({ folder: folder })
+          { folder: folder },
+          "thirdpartyToken"
         );
         this.setState({ [item.propName]: true } as any);
         ConfigService.setReaderConfig(item.propName, "yes");
@@ -95,12 +94,14 @@ class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
       }
 
       // Enabling: prompt for auth credentials
-      const existingConfig = ConfigService.getReaderConfig(item.authConfigKey);
+      const existingConfig = ConfigService.getObjectConfig(
+        item.authConfigKey,
+        "thirdpartyToken",
+        {}
+      );
       let savedValues: Record<string, any> = {};
-      if (existingConfig) {
-        try {
-          savedValues = JSON.parse(existingConfig);
-        } catch {}
+      if (existingConfig && Object.keys(existingConfig).length > 0) {
+        savedValues = existingConfig;
       }
       // Build defaultValues record: key -> saved value or placeholder
       const defaultValues: Record<string, any> = {};
@@ -115,11 +116,7 @@ class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
         labelsMap[field.key] = this.props.t(field.label);
       }
 
-      const result = await vexOpenAsync(
-        defaultValues,
-        item.title + "\nPlease enter your credentials to enable sync:",
-        labelsMap
-      );
+      const result = await vexOpenAsync(defaultValues, "", labelsMap);
 
       if (!result) {
         // User cancelled
@@ -136,7 +133,11 @@ class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
       }
 
       // Save auth config
-      ConfigService.setReaderConfig(item.authConfigKey, JSON.stringify(result));
+      ConfigService.setObjectConfig(
+        item.authConfigKey,
+        result,
+        "thirdpartyToken"
+      );
 
       // Enable the setting
       this.setState({ [item.propName]: true } as any);
@@ -192,13 +193,17 @@ class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
             isElectron &&
             (() => {
               let folder = "";
-              try {
-                const raw = ConfigService.getReaderConfig(item.authConfigKey);
-                if (raw) {
-                  const parsed = JSON.parse(raw);
-                  folder = parsed["folder"] || "";
-                }
-              } catch {}
+
+              const config = ConfigService.getObjectConfig(
+                item.authConfigKey,
+                "thirdpartyToken",
+                {}
+              );
+              if (config && Object.keys(config).length > 0) {
+                const parsed = config;
+                folder = parsed["folder"] || "";
+              }
+
               return folder ? (
                 <div className="setting-dialog-location-title">{folder}</div>
               ) : null;
@@ -263,6 +268,11 @@ class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
     }
     ConfigService.setItem("storageLocation", newPath);
     this.setState({ storageLocation: newPath });
+    let targetDrive = ConfigService.getItem("defaultSyncOption");
+    await ipcRenderer.invoke("cloud-close", {
+      service: targetDrive,
+    });
+
     toast.success(this.props.t("Change successful"));
     this.props.handleFetchBooks();
   };
@@ -293,7 +303,10 @@ class DataSetting extends React.Component<SettingInfoProps, SettingInfoState> {
       } catch (error) {
         console.error("Error reading config.json:", error);
       }
-
+      let targetDrive = ConfigService.getItem("defaultSyncOption");
+      await ipcRenderer.invoke("cloud-close", {
+        service: targetDrive,
+      });
       toast.success(this.props.t("Switch successful"));
       this.props.handleFetchBooks();
       await generateSyncRecord();

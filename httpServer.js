@@ -31,9 +31,17 @@ const VALID_CREDENTIALS = {
   password: SERVER_PASSWORD,
 };
 
+// CORS 允许的来源列表（逗号分隔）。默认不允许任何跨域来源，
+// 仅允许同源（无 Origin 头）请求，以避免 CSRF/凭据滥用。
+// 例如：ALLOWED_ORIGINS="https://reader.example.com,https://app.example.com"
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter((o) => o.length > 0);
+
 // 验证密码来源
 if (getDockerSecret(SERVER_PASSWORD_FILE)) {
-  console.log("Using password from Docker Secret");
+  console.info("Using password from Docker Secret");
 } else if (process.env.SERVER_PASSWORD) {
   console.warn("Using password from environment variable (less secure)");
 } else {
@@ -48,9 +56,16 @@ if (!process.env.SERVER_USERNAME) {
   );
 }
 
+if (ALLOWED_ORIGINS.length === 0) {
+  console.warn(
+    "Warning: No ALLOWED_ORIGINS configured. All cross-origin requests will be allowed. " +
+      "Set ALLOWED_ORIGINS to a comma-separated list of trusted origins to restrict access."
+  );
+}
+
 // 检查服务器是否启用
 if (!SERVER_ENABLED) {
-  console.log(
+  console.info(
     "HTTP Server is disabled. Set ENABLE_HTTP_SERVER=true to enable it."
   );
   process.exit(0);
@@ -61,18 +76,64 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-const server = http.createServer((req, res) => {
-  // 设置CORS头部
-  res.setHeader("Access-Control-Allow-Origin", "*");
+// 设置安全的 CORS 头部：
+// - 仅当请求 Origin 在白名单中时回显该 Origin，并允许凭据
+// - 否则不发送 ACAO 头，浏览器会阻止跨域响应读取
+// 永远不会同时使用通配符 "*" 与 Allow-Credentials: true。
+function applyCorsHeaders(req, res) {
+  const origin = req.headers["origin"];
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  if (
+    origin &&
+    (ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin))
+  ) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    return true;
+  }
+  return false;
+}
+
+// 计算请求的有效服务端 Origin，用于判断 Origin 头是否表示同源请求。
+// 浏览器在同源的 POST/DELETE/fetch 请求中也会发送 Origin 头，
+// 因此不能仅凭 Origin 头存在就将其视为跨域请求。
+function getServerOrigin(req) {
+  const host = req.headers["host"];
+  if (!host) return null;
+  const scheme =
+    req.socket && req.socket.encrypted
+      ? "https"
+      : (req.headers["x-forwarded-proto"] || "http").split(",")[0].trim();
+  return `${scheme}://${host}`;
+}
+
+const server = http.createServer((req, res) => {
+  const origin = req.headers["origin"];
+  const serverOrigin = getServerOrigin(req);
+  const isCrossOrigin = !!origin && origin !== serverOrigin;
+  const corsAllowed = applyCorsHeaders(req, res);
 
   // 处理预检请求
   if (req.method === "OPTIONS") {
-    res.writeHead(200);
+    if (isCrossOrigin && !corsAllowed) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      return res.end("Origin not allowed");
+    }
+    res.writeHead(204);
     return res.end();
   }
+
+  // 对于跨域的实际请求，若来源不在白名单则拒绝，
+  // 防止凭据被跨站请求滥用 (CSRF / CWE-942)。
+  // 同源请求（包括带 Origin 头的 POST/DELETE）允许通过。
+  if (isCrossOrigin && !corsAllowed) {
+    res.writeHead(403, { "Content-Type": "text/plain" });
+    return res.end("Origin not allowed");
+  }
+
   // 认证检查
   if (!authenticate(req)) {
     res.writeHead(401, {
@@ -163,7 +224,7 @@ function handleUpload(req, res, dirParam) {
       const parts = parseMultipart(buffer, boundary);
 
       if (!parts.file || !parts.filename) {
-        console.log("Parsed parts:", Object.keys(parts)); // 调试信息
+        console.info("Parsed parts:", Object.keys(parts)); // 调试信息
         throw new Error("No valid file uploaded");
       }
 
@@ -249,7 +310,7 @@ function parseMultipart(buffer, boundary) {
       if (filenameMatch && filenameMatch[1]) {
         result.filename = filenameMatch[1];
         result.file = actualContent;
-        console.log(
+        console.info(
           `Found file: ${result.filename}, size: ${actualContent.length} bytes`
         ); // 调试信息
       } else {
@@ -431,7 +492,7 @@ function handleList(req, res, dirParam) {
 
 // 启动服务器
 server.listen(PORT, () => {
-  console.log(`Secure File Server running at http://localhost:${PORT}`);
-  console.log(`Username: ${VALID_CREDENTIALS.username}`);
-  console.log("Password: [HIDDEN FOR SECURITY]");
+  console.info(`Secure File Server running at http://localhost:${PORT}`);
+  console.info(`Username: ${VALID_CREDENTIALS.username}`);
+  console.info("Password: [HIDDEN FOR SECURITY]");
 });

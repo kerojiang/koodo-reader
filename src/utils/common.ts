@@ -105,18 +105,15 @@ export const vexTextareaAsync = (message, value = "") => {
     });
   });
 };
-export const defaultPrompts: Record<string, string> = {
-  aiTranslate:
-    "You are a professional translator. Translate the following text from {from} to {to}. Only return the translated text, no explanations.\n\nText: {text}",
-  aiDict:
-    "You are a professional dictionary assistant. Analyze the word or phrase: {word}\nProvide a comprehensive explanation including pronunciation, definitions, example sentences, and usage notes using {to} as the target language. ",
-  aiAssistance:
-    "You are a helpful reading assistant. The user is reading a book. Here is the context:\n{text}\n\nAnswer the user's question concisely and helpfully, and reply with the same language.",
-};
-export const vexComfirmAsync = (message, confirmText: string = "Confirm") => {
+
+export const vexComfirmAsync = (
+  message: string,
+  confirmText: string = "Confirm",
+  cancelText: string = "Cancel"
+) => {
   return new Promise((resolve) => {
     window.vex.dialog.buttons.YES.text = i18n.t(confirmText);
-    window.vex.dialog.buttons.NO.text = i18n.t("Cancel");
+    window.vex.dialog.buttons.NO.text = i18n.t(cancelText);
     window.vex.dialog.confirm({
       unsafeMessage: i18n.t(message),
       contentClassName: "custom-confirm-width",
@@ -499,6 +496,7 @@ export const preCacheAllBooks = async (bookList: Book[]) => {
     let cache = await rendition.preCache(result);
     if (cache !== "err" || cache) {
       await BookUtil.addBook("cache-" + selectedBook.key, "zip", cache);
+      toast.dismiss("add-book");
     }
   }
 };
@@ -792,19 +790,7 @@ export const testConnection = async (driveName: string, driveConfig: any) => {
 };
 export const testCORS = async (url: string) => {
   if (isElectron) return true;
-  if (window.location.href.startsWith("https://")) {
-    if (url.startsWith("http://")) {
-      toast.error(
-        i18n.t(
-          "This data source cannot be accessed due to browser's security policy. Please switch to another data source or HTTPS-based service provider."
-        ),
-        {
-          duration: 8000,
-        }
-      );
-      return false;
-    }
-  }
+
   try {
     const response = await fetch(url, {
       method: "GET", // 或 'POST' 等
@@ -821,13 +807,28 @@ export const testCORS = async (url: string) => {
       return true;
     }
   } catch (error) {
-    toast.error(
-      i18n.t(
-        "This data source cannot be accessed from browser due to CORS policy. Please switch to another data source or CORS-enabled service provider."
-      ) +
-        " " +
-        i18n.t("You can also use the desktop app to avoid this issue.")
-    );
+    if (window.location.href.startsWith("https://")) {
+      if (url.startsWith("http://")) {
+        toast.error(
+          i18n.t(
+            "This data source cannot be accessed due to browser's security policy. Please switch to another data source or HTTPS-based service provider."
+          ),
+          {
+            duration: 8000,
+          }
+        );
+        return false;
+      }
+    } else {
+      toast.error(
+        i18n.t(
+          "This data source cannot be accessed from browser due to CORS policy. Please switch to another data source or CORS-enabled service provider."
+        ) +
+          " " +
+          i18n.t("You can also use the desktop app to avoid this issue.")
+      );
+    }
+
     console.error("CORS not supported:", error);
     return false;
   }
@@ -1031,8 +1032,15 @@ export const compareVersions = (version1: string, version2: string) => {
   return 0; // Versions are equal
 };
 export const clearAllData = async () => {
+  let deviceUuid = "";
+  if (!isElectron) {
+    deviceUuid = ConfigService.getItem("fingerPrint") || "";
+  }
   localStorage.clear();
   sessionStorage.clear();
+  if (deviceUuid && !isElectron) {
+    ConfigService.setItem("fingerPrint", deviceUuid);
+  }
   //clear all indexed db data
 
   if (isElectron) {
@@ -1114,16 +1122,125 @@ export const handleAutoCloudSync = async () => {
   }
   return false;
 };
-const isCJKText = (text: string): boolean => {
-  // Check if the majority of characters are CJK (Chinese, Japanese, Korean)
-  const cjkPattern = /[\u3000-\u9fff\uac00-\ud7af\uf900-\ufaff]/g;
-  const cjkCount = (text.match(cjkPattern) || []).length;
-  return cjkCount / text.length > 0.3;
+export const detectLocalLanguage = (text: string): string => {
+  const chinesePattern = /[\u4e00-\u9fff\u3000-\u303f\uf900-\ufaff]/g;
+  const japanesePattern = /[\u3040-\u309f\u30a0-\u30ff]/g;
+  const koreanPattern = /[\uac00-\ud7af\u1100-\u11ff]/g;
+
+  const chineseCount = (text.match(chinesePattern) || []).length;
+  const japaneseCount = (text.match(japanesePattern) || []).length;
+  const koreanCount = (text.match(koreanPattern) || []).length;
+
+  const cjkTotal = chineseCount + japaneseCount + koreanCount;
+  if (cjkTotal / text.length <= 0.3) return "en";
+
+  if (chineseCount >= japaneseCount && chineseCount >= koreanCount) return "zh";
+  if (japaneseCount >= chineseCount && japaneseCount >= koreanCount)
+    return "ja";
+  return "ko";
+};
+export const getParserRegex = (extension: string, bookKey?: string) => {
+  let parserRegex = "";
+  if (extension.toLowerCase().endsWith("txt")) {
+    let defaultTxtParser = "Default parser";
+    // Per-book parser overrides the global setting
+    if (bookKey) {
+      const rule = ConfigService.getObjectConfig(bookKey, "bookRules", {});
+      if (rule?.defaultTxtParser) {
+        defaultTxtParser = rule.defaultTxtParser;
+      }
+    }
+    let txtParsers: any[] = [
+      ...Object.values(ConfigService.getAllObjectConfig("txtParsers")),
+      ...KookitConfig.ContentRegxConfig,
+    ];
+    let txtParser = txtParsers.find(
+      (parser) => parser.value === defaultTxtParser
+    );
+    if (txtParser) {
+      parserRegex = txtParser.regex;
+    }
+  }
+  return parserRegex;
+};
+export const parseColorInput = (input: string): string | null => {
+  const trimmed = input.trim();
+  // Hex format: #rgb or #rrggbb
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return (
+      "#" +
+      trimmed
+        .slice(1)
+        .split("")
+        .map((c) => c + c)
+        .join("")
+        .toLowerCase()
+    );
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  // rgb/rgba format
+  const match = trimmed.match(
+    /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*[\d.]+\s*)?\)$/
+  );
+  if (match) {
+    return (
+      "#" +
+      [match[1], match[2], match[3]]
+        .map((v) =>
+          Math.max(0, Math.min(255, parseInt(v, 10)))
+            .toString(16)
+            .padStart(2, "0")
+        )
+        .join("")
+    );
+  }
+  return null;
 };
 
+export const normalizePickerColor = (
+  color: string | undefined,
+  fallback: string
+): string => {
+  if (!color) {
+    return fallback;
+  }
+
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+      return `#${hex.toLowerCase()}`;
+    }
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+      return `#${hex
+        .split("")
+        .map((item) => item + item)
+        .join("")
+        .toLowerCase()}`;
+    }
+    return fallback;
+  }
+
+  const match = color.match(
+    /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*[\d.]+\s*)?\)/
+  );
+  if (!match) {
+    return fallback;
+  }
+
+  return `#${[match[1], match[2], match[3]]
+    .map((item) => {
+      const value = Math.max(0, Math.min(255, parseInt(item, 10)));
+      return value.toString(16).padStart(2, "0");
+    })
+    .join("")}`;
+};
 export const splitSentences = (text: string, maxLength?: number) => {
-  const resolvedMaxLength = maxLength ?? (isCJKText(text) ? 50 : 150);
-  const segmenter = new (Intl as any).Segmenter("zh", {
+  const lang = detectLocalLanguage(text);
+  const resolvedMaxLength = maxLength ?? (lang === "en" ? 150 : 50);
+
+  const segmenter = new (Intl as any).Segmenter(lang, {
     granularity: "sentence",
   });
   const segments = segmenter.segment(text);
@@ -1132,13 +1249,12 @@ export const splitSentences = (text: string, maxLength?: number) => {
   const trimmed = sentences
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.trim() !== "");
-
   const splitLongSentence = (sentence: string): string[] => {
     if (sentence.length <= resolvedMaxLength) return [sentence];
 
     // Try splitting by common punctuation marks (Chinese and Western)
     const parts = sentence
-      .split(/(?<=[,，;；:：、。！？…\.!\?])/)
+      .split(/(?<=[,，;；:：、…])/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 

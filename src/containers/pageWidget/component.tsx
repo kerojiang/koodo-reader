@@ -6,11 +6,14 @@ import {
   KookitConfig,
 } from "../../assets/lib/kookit-extra-browser.min";
 import { Trans } from "react-i18next";
-import { getBatchTrans } from "../../utils/request/reader";
+import { getBatchTrans, getWordDefinitions } from "../../utils/request/reader";
+import { detectLocalLanguage } from "../../utils/common";
+import toast from "react-hot-toast";
 class Background extends React.Component<BackgroundProps, BackgroundState> {
   isFirst: Boolean;
   timeInterval: any;
   lastBatchTranslationTriggerAt: number;
+  batchTranslationLock: Promise<any>;
   constructor(props: any) {
     super(props);
     this.state = {
@@ -22,6 +25,7 @@ class Background extends React.Component<BackgroundProps, BackgroundState> {
     };
     this.isFirst = true;
     this.lastBatchTranslationTriggerAt = 0;
+    this.batchTranslationLock = Promise.resolve();
   }
 
   getFormattedTime() {
@@ -50,56 +54,98 @@ class Background extends React.Component<BackgroundProps, BackgroundState> {
       await this.handlePageNum(nextProps.htmlBook.rendition);
       nextProps.htmlBook.rendition.on("page-changed", async () => {
         await this.handlePageNum(nextProps.htmlBook.rendition);
-        await this.handleBatchTranslation(nextProps.htmlBook.rendition, 10000);
+        await this.handleBatchTranslation(nextProps.htmlBook.rendition);
       });
       nextProps.htmlBook.rendition.on("rendered", async () => {
         await this.handlePageNum(nextProps.htmlBook.rendition);
-        await this.handleBatchTranslation(nextProps.htmlBook.rendition, 0);
+        await this.handleBatchTranslation(nextProps.htmlBook.rendition);
+        await this.handleWordDefinition(nextProps.htmlBook.rendition);
       });
     }
     if (nextProps.readerMode !== this.props.readerMode) {
       this.setState({ isSingle: nextProps.readerMode !== "double" });
     }
   }
-  async handleBatchTranslation(rendition, interval: number) {
-    if (
-      !ConfigService.getAllListConfig("fullTranslationBooks").includes(
-        this.props.currentBook.key
-      ) ||
-      ConfigService.getReaderConfig("fullTranslationMode") === "no" ||
-      !this.props.isAuthed
-    ) {
-      return;
-    }
-
-    const now = Date.now();
-    if (now - this.lastBatchTranslationTriggerAt < interval) {
-      return;
-    }
-    this.lastBatchTranslationTriggerAt = now;
-
-    let batchTransTexts = await rendition.getBatchTransTexts();
-    console.log(batchTransTexts, "batchTransTexts");
-    if (batchTransTexts && batchTransTexts.length > 0) {
-      let res = await getBatchTrans(
-        batchTransTexts,
-        "Automatic",
-        KookitConfig.ConvertLangMap[
-          ConfigService.getReaderConfig("lang") || "zhCN"
-        ]
-      );
-      console.log(res, "res");
-      if (res && res.data && res.data.texts) {
-        rendition.handleBatchTransResult(batchTransTexts, res.data.texts);
+  async handleBatchTranslation(rendition) {
+    const prev = this.batchTranslationLock;
+    const next = prev.then(async () => {
+      if (
+        !ConfigService.getAllListConfig("fullTranslationBooks").includes(
+          this.props.currentBook.key
+        ) ||
+        ConfigService.getReaderConfig("fullTranslationMode") === "no" ||
+        !this.props.isAuthed
+      ) {
+        return;
       }
-    }
-  }
 
+      let batchTransTexts = await rendition.getBatchTransTexts();
+      if (batchTransTexts && batchTransTexts.length > 0) {
+        let res = await getBatchTrans(
+          batchTransTexts,
+          "Automatic",
+          KookitConfig.ConvertLangMap[
+            ConfigService.getReaderConfig("lang") || "zhCN"
+          ]
+        );
+        if (res && res.data && res.data.texts) {
+          rendition.handleBatchTransResult(batchTransTexts, res.data.texts);
+        }
+      }
+    });
+    this.batchTranslationLock = next.catch(() => {});
+    return next;
+  }
+  async handleWordDefinition(rendition) {
+    const prev = this.batchTranslationLock;
+    const next = prev.then(async () => {
+      if (
+        !ConfigService.getAllListConfig("wordDefinitionBooks").includes(
+          this.props.currentBook.key
+        ) ||
+        !this.props.isAuthed
+      ) {
+        return;
+      }
+
+      let wordTexts = await rendition.audioText();
+      if (wordTexts && wordTexts.length > 0) {
+        let lang = detectLocalLanguage(wordTexts.slice(0, 500).join(" "));
+        if (lang === "ko") {
+          toast.error(
+            this.props.t(
+              "Unsupported language for word definition, currently only Chinese, Japanese and English are supported"
+            )
+          );
+          return;
+        }
+        let currentLevel =
+          lang === "zh"
+            ? ConfigService.getReaderConfig("currentChineseLevel") || "HSK3"
+            : lang === "ja"
+              ? ConfigService.getReaderConfig("currentJapaneseLevel") || "N3"
+              : ConfigService.getReaderConfig("currentEnglishLevel") || "四级";
+        let res = await getWordDefinitions(wordTexts, currentLevel, lang);
+
+        if (res && res.data && res.data.results) {
+          rendition.handleWordDefinitionResult(
+            res.data.results,
+            lang,
+            ConfigService.getReaderConfig("lang")
+          );
+        }
+      }
+    });
+    this.batchTranslationLock = next.catch(() => {});
+    return next;
+  }
   async handlePageNum(rendition) {
     let pageInfo = await rendition.getProgress();
     if (
       this.props.currentBook.format === "PDF" &&
-      ConfigService.getReaderConfig("isConvertPDF") !== "yes"
+      !ConfigService.getAllListConfig("convertPDFBooks").includes(
+        this.props.currentBook.key
+      )
     ) {
       this.setState({
         prevPage: pageInfo.currentPage,

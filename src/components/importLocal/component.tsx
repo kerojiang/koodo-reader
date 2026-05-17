@@ -10,7 +10,10 @@ import { isElectron } from "react-device-detect";
 import { withRouter } from "react-router-dom";
 import BookUtil from "../../utils/file/bookUtil";
 import toast from "react-hot-toast";
-import { ConfigService } from "../../assets/lib/kookit-extra-browser.min";
+import {
+  CommonTool,
+  ConfigService,
+} from "../../assets/lib/kookit-extra-browser.min";
 import CoverUtil from "../../utils/file/coverUtil";
 import {
   calculateFileMD5,
@@ -19,6 +22,19 @@ import {
 } from "../../utils/common";
 import DatabaseService from "../../utils/storage/databaseService";
 import { BookHelper } from "../../assets/lib/kookit.min";
+
+// Convert supportedFormats to react-dropzone v14+ accept format
+// Key is MIME type, value is array of file extensions
+const supportedFormatsAccept = supportedFormats.reduce<
+  Record<string, string[]>
+>((obj, ext) => {
+  const mimeType = CommonTool.getMimeType(ext.replace(".", ""));
+  if (mimeType) {
+    if (!obj[mimeType]) obj[mimeType] = [];
+    obj[mimeType].push(ext);
+  }
+  return obj;
+}, {});
 declare var window: any;
 let clickFilePath = "";
 
@@ -94,7 +110,10 @@ class ImportLocal extends React.Component<ImportLocalProps, ImportLocalState> {
       if (this.state.isOpenFile) {
         if (ConfigService.getReaderConfig("isPreventAdd") === "yes") {
           //ignore
-        } else if (this.props.isAuthed) {
+        } else if (
+          this.props.isAuthed &&
+          ConfigService.getItem("defaultSyncOption")
+        ) {
           await BookUtil.addBook(book.key, book.format.toLowerCase(), buffer);
           await CoverUtil.addCover(book);
         } else if (ConfigService.getReaderConfig("isImportPath") === "yes") {
@@ -113,7 +132,7 @@ class ImportLocal extends React.Component<ImportLocalProps, ImportLocalState> {
       } else {
         if (
           ConfigService.getReaderConfig("isImportPath") !== "yes" ||
-          this.props.isAuthed
+          (this.props.isAuthed && ConfigService.getItem("defaultSyncOption"))
         ) {
           await BookUtil.addBook(book.key, book.format.toLowerCase(), buffer);
         }
@@ -127,6 +146,9 @@ class ImportLocal extends React.Component<ImportLocalProps, ImportLocalState> {
         .then(() => {
           this.props.handleFetchBooks();
           if (this.props.mode === "shelf") {
+            if (!this.state.importingShelfTitle) {
+              this.setState({ importingShelfTitle: this.props.shelfTitle });
+            }
             ConfigService.setMapConfig(
               this.state.importingShelfTitle || this.props.shelfTitle,
               book.key,
@@ -354,7 +376,7 @@ class ImportLocal extends React.Component<ImportLocalProps, ImportLocalState> {
           }
           this.setState({ importingShelfTitle: "" });
         }}
-        accept={supportedFormats}
+        accept={supportedFormatsAccept}
         multiple={true}
       >
         {({ getRootProps, getInputProps }) => (

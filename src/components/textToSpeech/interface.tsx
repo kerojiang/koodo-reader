@@ -9,9 +9,13 @@ export interface TextToSpeechProps {
   isReading: boolean;
   isAuthed: boolean;
   readerMode: string;
+  speechStartText: string;
+  isSpeechAutoStart: boolean;
   handleFetchPlugins: () => void;
   handleSetting: (isShow: boolean) => void;
   handleSettingMode: (settingMode: string) => void;
+  handleSpeechStartText: (speechStartText: string) => void;
+  handleSpeechAutoStart: (isSpeechAutoStart: boolean) => void;
   t: (title: string) => string;
 }
 export interface TextToSpeechState {
@@ -31,4 +35,6 @@ export interface TextToSpeechState {
   multiRoleNarratorEngine: string;
   multiRoleMaleEngine: string;
   multiRoleFemaleEngine: string;
+  multiRoleChildVoice: string;
+  multiRoleChildEngine: string;
 }
