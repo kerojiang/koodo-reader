@@ -29,7 +29,7 @@ import {
 } from "../../utils/reader/bookDrag";
 import Footer from "../../components/footer";
 import ProtectionOverlay from "../../components/protection";
-import edgeTTSService from "../../utils/common/edgeTTSService";
+import kerojiangTTSService from "../../utils/common/kerojiangTTSService";
 class Manager extends React.Component<ManagerProps, ManagerState> {
   timer!: NodeJS.Timeout;
   private isDraggingFromApp = false;
@@ -89,9 +89,9 @@ class Manager extends React.Component<ManagerProps, ManagerState> {
     document.addEventListener("dragend", this.handleDocumentDragEnd, true);
     document.addEventListener("dragenter", this.handleExternalDragEnter, true);
 
-    // 程序启动时后台初始化 Edge TTS 服务
-    edgeTTSService.init().then(() => {
-      console.log('[Manager] Edge TTS 服务初始化完成');
+    // 程序启动时后台初始化 Kerojiang TTS 服务
+    kerojiangTTSService.init().then(() => {
+      console.log('[Manager] Kerojiang TTS 服务初始化完成');
     });
     
     // Auto switch to configured startup shelf

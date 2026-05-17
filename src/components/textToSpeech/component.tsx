@@ -22,7 +22,7 @@ import { Howl } from "howler";
 import { fetchUserInfo } from "../../utils/request/user";
 import { TextToSpeechProps, TextToSpeechState } from "./interface";
 import "./textToSpeech.css";
-import edgeTTSService from "../../utils/common/edgeTTSService";
+import kerojiangTTSService from "../../utils/common/kerojiangTTSService";
 declare var window: any;
 class TextToSpeech extends React.Component<
   TextToSpeechProps,
@@ -52,7 +52,7 @@ class TextToSpeech extends React.Component<
       voiceList: {},
       voiceLocale:
         ConfigService.getReaderConfig("voiceLocale") || navigator.language,
-      isEdgeTtsAvailable: false,
+      isKerojiangTtsAvailable: false,
       multiRoleEnabled: ConfigService.getAllListConfig(
         "multiRoleVoiceBooks"
       ).includes(props.currentBook?.key),
@@ -101,7 +101,7 @@ class TextToSpeech extends React.Component<
     const bookName = this.props.currentBook?.name;
     if (bookName) {
       console.log('[TextToSpeech] 书打开，清除该书缓存:', bookName);
-      await TTSUtil.clearEdgeTtsAudio(bookName);
+      await TTSUtil.clearKerojiangTtsAudio(bookName);
     }
 
     const setSpeech = () => {
@@ -164,42 +164,42 @@ class TextToSpeech extends React.Component<
 
     if (!voiceName || !voiceEngine) {
       ConfigService.setReaderConfig("voiceName", "zh-CN-XiaoxiaoNeural");
-      ConfigService.setReaderConfig("voiceEngine", "edge-tts");
+      ConfigService.setReaderConfig("voiceEngine", "kerojiang-tts");
       ConfigService.setReaderConfig("voiceLocale", "zh");
       voiceName = "zh-CN-XiaoxiaoNeural";
-      voiceEngine = "edge-tts";
-      console.log('[TextToSpeech] 设置默认语音为中文 Xiaoxiao Edge TTS');
+      voiceEngine = "kerojiang-tts";
+      console.log('[TextToSpeech] 设置默认语音为中文 Xiaoxiao Kerojiang TTS');
     }
 
-    // 检查Edge TTS API可用性
-    this.checkEdgeTtsAvailability();
+    // 检查Kerojiang TTS API可用性
+    this.checkKerojiangTtsAvailability();
   }
 
-  checkEdgeTtsAvailability = async () => {
-    console.log('[TextToSpeech] 检查 Edge TTS 服务状态...');
+  checkKerojiangTtsAvailability = async () => {
+    console.log('[TextToSpeech] 检查 Kerojiang TTS 服务状态...');
     
     // 等待服务初始化完成
-    if (!edgeTTSService.isInitialized()) {
-      console.log('[TextToSpeech] 等待 Edge TTS 服务初始化...');
-      await edgeTTSService.init();
+    if (!kerojiangTTSService.isInitialized()) {
+      console.log('[TextToSpeech] 等待 Kerojiang TTS 服务初始化...');
+      await kerojiangTTSService.init();
     }
 
-    const isAvailable = edgeTTSService.isAvailable();
-    console.log('[TextToSpeech] Edge TTS 服务状态:', isAvailable ? '可用' : '不可用');
+    const isAvailable = kerojiangTTSService.isAvailable();
+    console.log('[TextToSpeech] Kerojiang TTS 服务状态:', isAvailable ? '可用' : '不可用');
 
     if (isAvailable) {
-      this.setState({ isEdgeTtsAvailable: true });
+      this.setState({ isKerojiangTtsAvailable: true });
       
-      // 将 Edge TTS 语音添加到 this.voices 数组
-      const edgeVoices = edgeTTSService.getAllVoices();
-      console.log('[TextToSpeech] Edge TTS 语音数量:', edgeVoices.length);
+      // 将 Kerojiang TTS 语音添加到 this.voices 数组
+      const kerojiangVoices = kerojiangTTSService.getAllVoices();
+      console.log('[TextToSpeech] Kerojiang TTS 语音数量:', kerojiangVoices.length);
       
-      // 先过滤掉已存在的 edge-tts 语音（避免重复添加）
-      this.voices = this.voices.filter(v => v.plugin !== 'edge-tts');
-      this.voices = [...this.voices, ...edgeVoices];
+      // 先过滤掉已存在的 kerojiang-tts 语音（避免重复添加）
+      this.voices = this.voices.filter(v => v.plugin !== 'kerojiang-tts');
+      this.voices = [...this.voices, ...kerojiangVoices];
       console.log('[TextToSpeech] 总语音数:', this.voices.length);
     } else {
-      this.setState({ isEdgeTtsAvailable: false });
+      this.setState({ isKerojiangTtsAvailable: false });
     }
 
     // 处理语音列表
@@ -218,7 +218,7 @@ class TextToSpeech extends React.Component<
     const bookName = this.props.currentBook?.name;
     if (bookName) {
       console.log('[TextToSpeech] 书关闭，清除该书缓存:', bookName);
-      TTSUtil.clearEdgeTtsAudio(bookName);
+      TTSUtil.clearKerojiangTtsAudio(bookName);
     }
   }
 
@@ -230,13 +230,13 @@ class TextToSpeech extends React.Component<
     if (nextProps.plugins !== this.props.plugins) {
       this.customVoices = TTSUtil.getVoiceList(nextProps.plugins);
 
-      // 重新构建语音列表，保留Edge TTS语音（如果可用）
-      const edgeTtsVoices = this.voices.filter(v => v.plugin === 'edge-tts');
+      // 重新构建语音列表，保留Kerojiang TTS语音（如果可用）
+      const kerojiangTtsVoices = this.voices.filter(v => v.plugin === 'kerojiang-tts');
       this.voices = [...this.nativeVoices, ...this.customVoices];
 
-      // 重新添加Edge TTS语音
-      if (edgeTtsVoices.length > 0) {
-        this.voices = [...this.voices, ...edgeTtsVoices];
+      // 重新添加Kerojiang TTS语音
+      if (kerojiangTtsVoices.length > 0) {
+        this.voices = [...this.voices, ...kerojiangTtsVoices];
       }
 
       this.handleVoiceLocaleList();
@@ -246,7 +246,7 @@ class TextToSpeech extends React.Component<
       const oldBookName = this.props.currentBook?.name;
       if (oldBookName) {
         console.log('[TextToSpeech] 书籍切换，清除旧书缓存:', oldBookName);
-        TTSUtil.clearEdgeTtsAudio(oldBookName);
+        TTSUtil.clearKerojiangTtsAudio(oldBookName);
       }
       
       this.setState({
@@ -498,7 +498,7 @@ class TextToSpeech extends React.Component<
     await TTSUtil.stopAudio();
     // 停止播放时清理当前书本的缓存
     const bookName = this.props.currentBook?.name;
-    await TTSUtil.clearEdgeTtsAudio(bookName);
+    await TTSUtil.clearKerojiangTtsAudio(bookName);
     this.setState({ isAudioOn: false, isPaused: false, currentIndex: 0 });
     this.nodeList = [];
   };
@@ -812,7 +812,7 @@ class TextToSpeech extends React.Component<
     if (!this.state.isAudioOn) {
       TTSUtil.setAudioPaths();
       // 开始播放前清除所有缓存
-      await TTSUtil.clearEdgeTtsAudio();
+      await TTSUtil.clearKerojiangTtsAudio();
     }
 
     for (let index = nodeIndex; index < this.nodeList.length; index++) {
@@ -937,8 +937,8 @@ class TextToSpeech extends React.Component<
       }
     }
     // 当前页的所有部分播放完成，清除缓存
-    if (this.nodeList[this.state.currentIndex]?.voiceEngine === "edge-tts") {
-      await TTSUtil.clearEdgeTtsAudio();
+    if (this.nodeList[this.state.currentIndex]?.voiceEngine === "kerojiang-tts") {
+      await TTSUtil.clearKerojiangTtsAudio();
     }
 
     if (this.state.isAudioOn && this.props.isReading) {
@@ -1175,8 +1175,8 @@ class TextToSpeech extends React.Component<
       totalVoices: this.voices.length,
       currentLocale: this.state.voiceLocale,
       availableVoicesForCurrentLocale: voiceList[this.state.voiceLocale]?.length || 0,
-      edgeTtsVoices: this.voices.filter(v => v.plugin === 'edge-tts').length,
-      edgeTtsApiAvailable: this.state.isEdgeTtsAvailable
+      kerojiangTtsVoices: this.voices.filter(v => v.plugin === 'kerojiang-tts').length,
+      kerojiangTtsApiAvailable: this.state.isKerojiangTtsAvailable
     });
 
     this.setState({ languageList, voiceList }, () => {
@@ -1322,7 +1322,7 @@ class TextToSpeech extends React.Component<
               marginLeft: "20px",
               marginRight: "20px",
               padding: "8px",
-              backgroundColor: this.state.isEdgeTtsAvailable
+              backgroundColor: this.state.isKerojiangTtsAvailable
                 ? "rgba(100, 150, 255, 0.1)"
                 : "rgba(255, 150, 100, 0.1)",
               borderRadius: "6px",
@@ -1331,14 +1331,14 @@ class TextToSpeech extends React.Component<
             }}
           >
             <div style={{ fontWeight: 500, marginBottom: "3px" }}>
-              {this.state.isEdgeTtsAvailable
-                ? "💡 Edge TTS 可用"
-                : "⚠️ Edge TTS 不可用"}
+              {this.state.isKerojiangTtsAvailable
+                ? "💡 Kerojiang TTS 可用"
+                : "⚠️ Kerojiang TTS 不可用"}
             </div>
             <div>
-              {this.state.isEdgeTtsAvailable
-                ? "Edge TTS 服务正常，可选择 Edge TTS 语音进行播放"
-                : "Edge TTS 服务不可用，请检查网络连接"}
+              {this.state.isKerojiangTtsAvailable
+                ? "Kerojiang TTS 服务正常，可选择 Kerojiang TTS 语音进行播放"
+                : "Kerojiang TTS 服务不可用，请检查网络连接"}
             </div>
           </div>
         )}
@@ -1455,7 +1455,7 @@ class TextToSpeech extends React.Component<
                 );
               }
               return availableVoices.map((item) => {
-                  const isEdgeTts = item.plugin === "edge-tts";
+                  const isKerojiangTts = item.plugin === "kerojiang-tts";
                   return (
                     <option
                       value={[item.name, item.plugin].join("#")}
@@ -1468,9 +1468,9 @@ class TextToSpeech extends React.Component<
                           ConfigService.getReaderConfig("voiceEngine")
                       }
                     >
-                      {isEdgeTts ? "🎙️ " : ""}
+                      {isKerojiangTts ? "🎙️ " : ""}
                       {this.props.t(item.displayName || item.FriendlyName || item.name)}
-                      {isEdgeTts ? " (Edge)" : ""}
+                      {isKerojiangTts ? " (Kerojiang)" : ""}
                     </option>
                   );
                 }
@@ -1598,11 +1598,11 @@ class TextToSpeech extends React.Component<
                   {this.props.t("System voice")}
                 </option>
                 <option
-                  value="edge-tts"
+                  value="kerojiang-tts"
                   className="lang-setting-option"
-                  selected={this.state.multiRoleVoiceType === "edge-tts"}
+                  selected={this.state.multiRoleVoiceType === "kerojiang-tts"}
                 >
-                  {this.props.t("Edge TTS")}
+                  {this.props.t("Kerojiang TTS")}
                 </option>
                 <option
                   value="official-ai-voice-plugin"
@@ -1665,9 +1665,9 @@ class TextToSpeech extends React.Component<
                       key={[item.name, item.plugin].join("#")}
                       className="lang-setting-option"
                     >
-                      {item.plugin === "edge-tts" ? "🎙️ " : ""}
+                      {item.plugin === "kerojiang-tts" ? "🎙️ " : ""}
                       {this.props.t(item.displayName || item.FriendlyName || item.name)}
-                      {item.plugin === "edge-tts" ? " (Edge)" : ""}
+                      {item.plugin === "kerojiang-tts" ? " (Kerojiang)" : ""}
                     </option>
                   )
                 )}
@@ -1724,9 +1724,9 @@ class TextToSpeech extends React.Component<
                       key={[item.name, item.plugin].join("#")}
                       className="lang-setting-option"
                     >
-                      {item.plugin === "edge-tts" ? "🎙️ " : ""}
+                      {item.plugin === "kerojiang-tts" ? "🎙️ " : ""}
                       {this.props.t(item.displayName || item.FriendlyName || item.name)}
-                      {item.plugin === "edge-tts" ? " (Edge)" : ""}
+                      {item.plugin === "kerojiang-tts" ? " (Kerojiang)" : ""}
                     </option>
                   ))}
               </select>
@@ -1782,9 +1782,9 @@ class TextToSpeech extends React.Component<
                       key={[item.name, item.plugin].join("#")}
                       className="lang-setting-option"
                     >
-                      {item.plugin === "edge-tts" ? "🎙️ " : ""}
+                      {item.plugin === "kerojiang-tts" ? "🎙️ " : ""}
                       {this.props.t(item.displayName || item.FriendlyName || item.name)}
-                      {item.plugin === "edge-tts" ? " (Edge)" : ""}
+                      {item.plugin === "kerojiang-tts" ? " (Kerojiang)" : ""}
                     </option>
                   ))}
               </select>
