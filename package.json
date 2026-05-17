@@ -109,7 +109,7 @@
     "eject": "react-scripts eject",
     "ele": "electron .",
     "dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://127.0.0.1:3000/ && nodemon --watch main.js --exec electron .\"",
-    "release": "electron-builder",
+    "release": "electron-builder --linux appimage --x64 --publish never",
     "prerelease": "react-scripts build",
     "postinstall": "node scripts/patch-nan.js && electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3"

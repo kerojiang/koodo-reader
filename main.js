@@ -679,9 +679,6 @@ class KerojiangTTSConnection {
     this.isReady = false;
     this.heartbeatTimer = null;
     this.idleTimer = null;
-    this.messageHandlers = new Map();
-    this.pendingRequests = new Map();
-    this.requestIdCounter = 0;
     this.audioChunks = [];
     this.currentResolve = null;
     this.currentReject = null;
@@ -708,7 +705,7 @@ class KerojiangTTSConnection {
 
     const wsURL = `${WSS_URL}&ConnectionId=${connectionId}&Sec-MS-GEC=${secGEC}&Sec-MS-GEC-Version=${SEC_MSGEC_VERSION}`;
 
-    console.log('[Edge TTS] Connecting to WebSocket...');
+    console.log('[Kerojiang TTS] Connecting to WebSocket...');
 
     this.ws = new WebSocket(wsURL, {
       headers: headers,
@@ -717,7 +714,7 @@ class KerojiangTTSConnection {
     });
 
     this.ws.on('open', () => {
-      console.log('[Edge TTS] WebSocket connected');
+      console.log('[Kerojiang TTS] WebSocket connected');
       this.isConnected = true;
       this.isReady = false;
 
@@ -729,10 +726,10 @@ class KerojiangTTSConnection {
 
       this.ws.send(command, (err) => {
         if (err) {
-          console.error('[Edge TTS] Failed to send config:', err);
+          console.error('[Kerojiang TTS] Failed to send config:', err);
           reject(err);
         } else {
-          console.log('[Edge TTS] Config sent, waiting for response...');
+          console.log('[Kerojiang TTS] Config sent, waiting for response...');
           // 配置发送后，等待response消息标记为ready
           setTimeout(() => {
             if (!this.isReady) {
@@ -751,14 +748,14 @@ class KerojiangTTSConnection {
     });
 
     this.ws.on('close', (code, reason) => {
-      console.log('[Edge TTS] WebSocket closed:', code);
+      console.log('[Kerojiang TTS] WebSocket closed:', code);
       this._cleanup();
       this.isConnected = false;
       this.isReady = false;
     });
 
     this.ws.on('error', (error) => {
-      console.error('[Edge TTS] WebSocket error:', error.message);
+      console.error('[Kerojiang TTS] WebSocket error:', error.message);
       this._cleanup();
       this.isConnected = false;
       this.isReady = false;
@@ -794,11 +791,11 @@ class KerojiangTTSConnection {
     const msgPath = parameters['Path'];
 
     if (msgPath === 'response') {
-      console.log('[Edge TTS] Service ready');
+      console.log('[Kerojiang TTS] Service ready');
       this.isReady = true;
       this._startHeartbeat();
     } else if (msgPath === 'turn.end') {
-      console.log('[Edge TTS] Turn ended');
+      console.log('[Kerojiang TTS] Turn ended');
       this._resolveCurrentRequest();
     } else if (msgPath === 'audio.metadata') {
       // 处理元数据（可选）
@@ -851,12 +848,12 @@ class KerojiangTTSConnection {
 
       this.ws.send(request, (err) => {
         if (err) {
-          console.error('[Edge TTS] Failed to send SSML:', err);
+          console.error('[Kerojiang TTS] Failed to send SSML:', err);
           this.currentReject = null;
           this.currentResolve = null;
           reject(err);
         } else {
-          console.log('[Edge TTS] SSML sent, waiting for audio...');
+          console.log('[Kerojiang TTS] SSML sent, waiting for audio...');
         }
       });
 
@@ -882,7 +879,7 @@ class KerojiangTTSConnection {
         try {
           this.ws.ping();
         } catch (error) {
-          console.log('[Edge TTS] Heartbeat failed:', error.message);
+          console.log('[Kerojiang TTS] Heartbeat failed:', error.message);
         }
       }
     }, 30000);
@@ -904,7 +901,7 @@ class KerojiangTTSConnection {
       clearTimeout(this.idleTimer);
     }
     this.idleTimer = setTimeout(() => {
-      console.log('[Edge TTS] Connection idle, closing...');
+      console.log('[Kerojiang TTS] Connection idle, closing...');
       this.close();
     }, 300000);
   }
@@ -923,7 +920,7 @@ class KerojiangTTSConnection {
       const resolve = this.currentResolve;
       this.currentResolve = null;
       this.currentReject = null;
-      console.log('[Edge TTS] Cleanup with received audio, resolving');
+      console.log('[Kerojiang TTS] Cleanup with received audio, resolving');
       resolve(audioBuffer);
     } else {
       // 请求已完成，只需清理
@@ -1009,26 +1006,6 @@ class KerojiangTTS {
   constructor() {
     this.connection = null;
     this.useCount = 0;
-  }
-
-  // 获取连接
-  // 注意：Edge TTS 服务在turn.end后关闭连接，所以每次都需要新连接
-  async getConnection() {
-    try {
-      // 创建新连接（旧连接已被服务端关闭）
-      this.connection = new KerojiangTTSConnection();
-      await this.connection.connect();
-
-      if (!this.connection || !this.connection.ws) {
-        throw new Error('Connection was not established properly');
-      }
-
-      return this.connection;
-    } catch (error) {
-      console.error('[Edge TTS] getConnection failed:', error.message);
-      this.connection = null;
-      throw error;
-    }
   }
 
   // 清理文本
@@ -1129,7 +1106,7 @@ class KerojiangTTS {
   async generateAudio(text, voiceName, speed, outputDir, options = {}) {
     try {
       const { bookName = 'unknown', chapter = 0, part = 0 } = options;
-      console.log('[Edge TTS] Generating audio:', { text: text.substring(0, 50), voiceName, speed, bookName, chapter, part });
+      console.log('[Kerojiang TTS] Generating audio:', { text: text.substring(0, 50), voiceName, speed, bookName, chapter, part });
 
       const cleanText = this.removeIncompatibleCharacters(text);
       const escapedText = this.escapeHTML(cleanText);
@@ -1138,7 +1115,7 @@ class KerojiangTTS {
       const volume = '+0%';
 
       const textChunks = this.splitTextBySentencesWithMaxLength(escapedText, 4096);
-      console.log('[Edge TTS] Text chunks:', textChunks.length);
+      console.log('[Kerojiang TTS] Text chunks:', textChunks.length);
 
       // 创建缓存目录（使用系统临时文件夹，支持 Windows/Mac/Linux）
       const cacheBaseDir = outputDir || path.join(app.getPath('temp'), "koodo-reader-tts");
@@ -1156,7 +1133,7 @@ class KerojiangTTS {
       // 处理每个文本块（每个块都会创建新连接）
       const allAudioData = [];
       for (let i = 0; i < textChunks.length; i++) {
-        console.log(`[Edge TTS] Processing chunk ${i + 1}/${textChunks.length}`);
+        console.log(`[Kerojiang TTS] Processing chunk ${i + 1}/${textChunks.length}`);
 
         let connection;
         try {
@@ -1167,7 +1144,7 @@ class KerojiangTTS {
             throw new Error(`Connection was not established for chunk ${i + 1}`);
           }
         } catch (error) {
-          console.error(`[Edge TTS] Failed to create connection for chunk ${i + 1}:`, error.message);
+          console.error(`[Kerojiang TTS] Failed to create connection for chunk ${i + 1}:`, error.message);
           throw new Error(`Connection failed for chunk ${i + 1}: ${error.message}`);
         }
 
@@ -1178,21 +1155,31 @@ class KerojiangTTS {
         try {
           const audioData = await connection.synthesize(textChunks[i], voiceName, rate, pitch, volume);
           allAudioData.push(audioData);
-          console.log(`[Edge TTS] Chunk ${i + 1} done, size:`, audioData.length);
+          console.log(`[Kerojiang TTS] Chunk ${i + 1} done, size:`, audioData.length);
         } catch (error) {
-          console.error(`[Edge TTS] Failed to synthesize chunk ${i + 1}:`, error.message);
+          console.error(`[Kerojiang TTS] Failed to synthesize chunk ${i + 1}:`, error.message);
           throw error;
+        } finally {
+          // 确保连接被正确关闭，防止 WebSocket 连接泄漏
+          if (connection && typeof connection.close === 'function') {
+            try {
+              connection.close();
+              console.log(`[Kerojiang TTS] Connection closed for chunk ${i + 1}`);
+            } catch (closeError) {
+              console.warn(`[Kerojiang TTS] Error closing connection for chunk ${i + 1}:`, closeError.message);
+            }
+          }
         }
       }
 
       const mergedAudio = Buffer.concat(allAudioData);
-      console.log('[Edge TTS] Merged audio size:', mergedAudio.length);
+      console.log('[Kerojiang TTS] Merged audio size:', mergedAudio.length);
       fs.writeFileSync(audioPath, mergedAudio);
-      console.log('[Edge TTS] Saved to:', audioPath);
+      console.log('[Kerojiang TTS] Saved to:', audioPath);
 
       return audioPath;
     } catch (error) {
-      console.error('[Edge TTS] Error generating audio:', error);
+      console.error('[Kerojiang TTS] Error generating audio:', error);
       throw error;
     }
   }
@@ -1200,7 +1187,7 @@ class KerojiangTTS {
   // 获取语音列表
   async listVoices() {
     try {
-      console.log('[Edge TTS] Fetching voice list...');
+      console.log('[Kerojiang TTS] Fetching voice list...');
       const chromiumMajorVersion = CHROMIUM_FULL_VERSION.split('.')[0];
       const muid = crypto.randomBytes(16).toString('hex').toUpperCase();
       const headers = {
@@ -1233,7 +1220,7 @@ class KerojiangTTS {
       }
 
       const voices = await response.json();
-      console.log(`[Edge TTS] Raw voices count: ${voices.length}`);
+      console.log(`[Kerojiang TTS] Raw voices count: ${voices.length}`);
 
       if (!Array.isArray(voices)) {
         throw new Error('Invalid voice list format received');
@@ -1249,7 +1236,7 @@ class KerojiangTTS {
         return false;
       });
 
-      console.log(`[Edge TTS] Found ${voices.length} voices, filtered to ${filteredVoices.length} voices`);
+      console.log(`[Kerojiang TTS] Found ${voices.length} voices, filtered to ${filteredVoices.length} voices`);
 
       return filteredVoices.map(voice => ({
         name: voice.ShortName,
@@ -1262,17 +1249,16 @@ class KerojiangTTS {
         voiceInfo: voice,
       }));
     } catch (error) {
-      console.error('[Edge TTS] Failed to list voices:', error.message);
+      console.error('[Kerojiang TTS] Failed to list voices:', error.message);
       // 返回空数组而不是抛出错误，让前端可以继续运行
       return [];
     }
   }
 
+  // 进程退出时调用（连接由 generateAudio 自行管理，此处无需操作）
   close() {
-    if (this.connection) {
-      this.connection.close();
-      this.connection = null;
-    }
+    // 每个音频块生成时都会创建并关闭独立连接
+    // 无需在此处额外清理
   }
 }
 
@@ -1327,10 +1313,10 @@ const kerojiangClearAllTtsCache = () => {
           // 忽略删除失败的文件
         }
       }
-      console.log('[Edge TTS] Cleared all cache files');
+      console.log('[Kerojiang TTS] Cleared all cache files');
     }
   } catch (error) {
-    console.error('[Edge TTS] Failed to clear cache:', error);
+    console.error('[Kerojiang TTS] Failed to clear cache:', error);
   }
 };
 
@@ -1349,10 +1335,10 @@ const kerojiangClearBookTtsCache = (bookName) => {
           }
         }
       }
-      console.log('[Edge TTS] Cleared cache for book:', bookName);
+      console.log('[Kerojiang TTS] Cleared cache for book:', bookName);
     }
   } catch (error) {
-    console.error('[Edge TTS] Failed to clear book cache:', error);
+    console.error('[Kerojiang TTS] Failed to clear book cache:', error);
   }
 };
 

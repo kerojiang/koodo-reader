@@ -220,6 +220,9 @@ class TextToSpeech extends React.Component<
       console.log('[TextToSpeech] 书关闭，清除该书缓存:', bookName);
       TTSUtil.clearKerojiangTtsAudio(bookName);
     }
+    
+    // 停止预览音频
+    this.stopPreviewAudio();
   }
 
   UNSAFE_componentWillReceiveProps(
@@ -268,7 +271,7 @@ class TextToSpeech extends React.Component<
     const bookName = this.props.currentBook?.name;
     if (bookName) {
       console.log('[TextToSpeech] 书关闭，清除该书缓存:', bookName);
-      TTSUtil.clearEdgeTtsAudio(bookName);
+      TTSUtil.clearKerojiangTtsAudio(bookName);
     }
 
     this.stopPreviewAudio();
@@ -811,8 +814,8 @@ class TextToSpeech extends React.Component<
     let speed = parseFloat(ConfigService.getReaderConfig("voiceSpeed")) || 1;
     if (!this.state.isAudioOn) {
       TTSUtil.setAudioPaths();
-      // 开始播放前清除所有缓存
-      await TTSUtil.clearKerojiangTtsAudio();
+      // 开始播放前清除当前书的缓存
+      await TTSUtil.clearKerojiangTtsAudio(this.props.currentBook?.name);
     }
 
     for (let index = nodeIndex; index < this.nodeList.length; index++) {
@@ -936,9 +939,9 @@ class TextToSpeech extends React.Component<
         break;
       }
     }
-    // 当前页的所有部分播放完成，清除缓存
+    // 当前页的所有部分播放完成，清除当前书的缓存
     if (this.nodeList[this.state.currentIndex]?.voiceEngine === "kerojiang-tts") {
-      await TTSUtil.clearKerojiangTtsAudio();
+      await TTSUtil.clearKerojiangTtsAudio(this.props.currentBook?.name);
     }
 
     if (this.state.isAudioOn && this.props.isReading) {

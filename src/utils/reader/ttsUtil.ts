@@ -97,7 +97,7 @@ class TTSUtil {
     pageIndex?: number,
     part?: number,
     isCriticalPart: boolean = false
-  ) {
+  ): Promise<void | "error"> {
     console.log("TTSUtil cacheAudio called:", {
       startIndex,
       speed,
@@ -173,12 +173,12 @@ class TTSUtil {
             isOfficialAIVoice,
             pageIndex
           );
-          return; // 不返回任何值，表示成功
+          return; // 成功，返回 void
         } else {
           console.warn(
             `[TTS] First audio generation failed for index ${firstIndex}`
           );
-          return; // 返回空，表示失败但可以继续
+          return; // 失败但不阻断流程
         }
       } else {
         // 官方 AI 语音的处理逻辑
@@ -518,7 +518,7 @@ class TTSUtil {
     isFirst: boolean,
     isOfficialAIVoice: boolean,
     pageIndex?: number
-  ) {
+  ): Promise<void> {
     if (targetCacheCount <= 0 || startIndex >= audioNodeList.length) {
       return;
     }
@@ -527,7 +527,8 @@ class TTSUtil {
       `[TTS] Starting async cache for ${targetCacheCount} files from index ${startIndex}`
     );
 
-    // 调用原有的 cacheAudio 方法进行预缓存
+    // 调用原有的 cacheAudio 方法进行预缓存（不阻塞主流程）
+    // 注意：这里故意不使用 await，让其在后台异步执行
     this.cacheAudio(
       startIndex,
       speed,
@@ -560,6 +561,13 @@ class TTSUtil {
     }
 
     const audioNode = audioNodeList[index];
+
+    // 核心修复：跳过空文本或空白字符节点，防止官方 AI 语音也报错
+    if (!audioNode.text || !audioNode.text.trim()) {
+      console.log(`[TTS] Skipping empty text node at index ${index} (official AI voice)`);
+      return;
+    }
+
     const plugin = plugins.find((item) => item.key === audioNode.voiceEngine);
 
     if (!plugin) {
