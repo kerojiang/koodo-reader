@@ -1125,14 +1125,18 @@ class KerojiangTTS {
       const cacheBaseDir = outputDir || path.join(app.getPath('temp'), "koodo-reader-tts");
       if (!fs.existsSync(cacheBaseDir)) fs.mkdirSync(cacheBaseDir, { recursive: true });
 
-      // 生成文件名：书名-章节-部分.mp3
+      // 生成文件名：书名-章节-部分-时间戳.mp3（时间戳保证每次生成的文件名唯一）
       // 清理书名中的非法字符
       const safeBookName = String(bookName)
         .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows非法字符
         .replace(/\s+/g, '-')           // 空格替换为连字符
         .substring(0, 50);              // 限制长度
 
-      const audioPath = path.join(cacheBaseDir, `${safeBookName}-ch${chapter}-part${part}.mp3`);
+      // 唯一后缀：时间戳+随机串。即使磁盘上的 part0.mp3 已被覆盖为新内容，
+      // Chromium/Howler 对相同 file:// URL 的媒体缓存仍会返回旧解码数据，
+      // 唯一文件名确保每次播放的 URL 都不同，强制绕过缓存
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const audioPath = path.join(cacheBaseDir, `${safeBookName}-ch${chapter}-part${part}-${uniqueSuffix}.mp3`);
 
       // 处理每个文本块（每个块都会创建新连接）
       const allAudioData = [];
