@@ -259,23 +259,6 @@ class TextToSpeech extends React.Component<
       });
     }
   }
-  componentWillUnmount() {
-    // 清理防抖定时器
-    if (this.navigationDebounceTimer) {
-      clearTimeout(this.navigationDebounceTimer);
-      this.navigationDebounceTimer = null;
-    }
-    this.pendingNavigationIndex = null;
-
-    // 书关闭时清除该书的缓存
-    const bookName = this.props.currentBook?.name;
-    if (bookName) {
-      console.log('[TextToSpeech] 书关闭，清除该书缓存:', bookName);
-      TTSUtil.clearKerojiangTtsAudio(bookName);
-    }
-
-    this.stopPreviewAudio();
-  }
   componentDidUpdate(prevProps: Readonly<TextToSpeechProps>) {
     if (this.props.isSpeechAutoStart && !prevProps.isSpeechAutoStart) {
       this.handleSpeechAutoStartRequest();
