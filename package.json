@@ -23,7 +23,7 @@
     "adm-zip": "^0.5.2",
     "axios": "0.31.1",
     "basic-ftp": "5.3.1",
-    "better-sqlite3": "^11.6.0",
+    "better-sqlite3": "^11.8.0",
     "buffer": "^6.0.3",
     "chardet": "^2.0.0",
     "color-thief-browser": "^2.0.2",
@@ -119,6 +119,7 @@
   "build": {
     "appId": "xyz.960960.koodo",
     "productName": "Koodo Reader",
+    "npmRebuild": false,
     "copyright": "Copyright (c) 2020-2025 ${author}",
     "files": [
       "build/**/*",
