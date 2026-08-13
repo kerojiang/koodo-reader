@@ -272,14 +272,66 @@ class TextToSpeech extends React.Component<
       this.props.handleSpeechAutoStart(false);
     }
   };
+  normalizeForMatch = (text: string) => {
+    return (text || "")
+      .replace(/&nbsp;|&ensp;|&emsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/<[^>]*>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
   getSpeechStartIndex = (nodeTextList: string[]) => {
     const speechStartText = this.props.speechStartText;
 
     if (!speechStartText) return -1;
 
-    return nodeTextList.findIndex((item) => {
-      return item.includes(speechStartText) || speechStartText.includes(item);
+    // 归一化 DOM 选中文本与音频节点文本（HTML 实体、标签、空白差异），
+    // 避免精确匹配失败导致无法定位到正确的朗读起始段
+    const normalizedStart = this.normalizeForMatch(speechStartText);
+    if (!normalizedStart) return -1;
+
+    const normalizedNodes = nodeTextList.map((item) =>
+      this.normalizeForMatch(item)
+    );
+
+    // 1. 精确包含匹配
+    const exactIndex = normalizedNodes.findIndex((item) => {
+      return (
+        item.includes(normalizedStart) || normalizedStart.includes(item)
+      );
     });
+    if (exactIndex > -1) return exactIndex;
+
+    // 2. 前缀匹配：取选中文本前 15 个有效字符，定位到包含它的句子段
+    const prefix = normalizedStart.substring(0, 15);
+    const prefixIndex = normalizedNodes.findIndex((item) =>
+      item.includes(prefix)
+    );
+    if (prefixIndex > -1) return prefixIndex;
+
+    // 3. 相似度匹配：按字符重合度取最高分且超过阈值的句子段
+    let bestIndex = -1;
+    let bestScore = 0;
+    normalizedNodes.forEach((item, index) => {
+      if (!item) return;
+      const startCharSet = new Set(normalizedStart);
+      let commonCount = 0;
+      for (const ch of item) {
+        if (startCharSet.has(ch)) commonCount++;
+      }
+      const score = commonCount / Math.max(item.length, 1);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+    if (bestScore > 0.5) return bestIndex;
+
+    return -1;
   };
   handleSpeechAutoStartRequest = async () => {
     if (this.state.isAudioOn) {
@@ -936,6 +988,15 @@ class TextToSpeech extends React.Component<
         position,
         "recordLocation"
       );
+      // 修复：自动翻章后更新当前书籍/章节信息，
+      // 防止后续章节音频文件名与上一章冲突（ch/part 重名导致播放旧音频）
+      const newChapterIndex = parseInt(position.chapterDocIndex) || 0;
+      TTSUtil.setCurrentBookInfo(
+        this.props.currentBook?.name,
+        newChapterIndex
+      );
+      // 修复：翻章后清理旧章节的音频缓存文件，避免残留文件被误播放
+      await TTSUtil.clearKerojiangTtsAudio(this.props.currentBook?.name);
       this.nodeList = [];
       await this.handleAudio();
     }

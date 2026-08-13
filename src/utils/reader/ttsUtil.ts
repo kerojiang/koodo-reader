@@ -13,6 +13,7 @@ class TTSUtil {
   static currentBookName: string = "";
   static currentChapterIndex: number = 0;
   static isPlaying: boolean = false; // 跟踪是否有音频正在播放
+  static cacheGeneration: number = 0; // 翻章/重置时递增，丢弃过期缓存请求的结果
 
   static async readAloud(currentIndex: number) {
     // 如果当前有音频正在播放，先停止
@@ -257,6 +258,7 @@ class TTSUtil {
             return "error";
           }
           // 创建异步任务
+          const generation = this.cacheGeneration;
           const task = this.getAudioPath(
             audioNode.text,
             speed,
@@ -270,12 +272,12 @@ class TTSUtil {
             .then(async (res) => {
               // 处理完成后，从处理集合中移除
               this.processingIndexes.delete(index);
-              if (res) {
+              if (res && generation === this.cacheGeneration) {
                 return { index, audioPath: res };
               } else {
-                // 返回空字符串时不中断流程，只记录日志
+                // 返回空字符串或不属于当前代（翻章后过期请求）时不中断流程，只记录日志
                 console.warn(
-                  `[TTS] getAudioPath returned empty for index ${index}, skipping`
+                  `[TTS] getAudioPath returned empty or stale (generation mismatch) for index ${index}, skipping`
                 );
                 return null;
               }
@@ -320,6 +322,7 @@ class TTSUtil {
         startIndex + targetCacheCount,
         audioNodeList.length
       );
+      const generation = this.cacheGeneration;
       for (let index = startIndex; index < maxCacheIndex; index++) {
         if (this.isPaused) {
           break;
@@ -376,7 +379,7 @@ class TTSUtil {
         );
         // 处理完成后，从处理集合中移除
         this.processingIndexes.delete(index);
-        if (audioPath) {
+        if (audioPath && generation === this.cacheGeneration) {
           this.audioPaths.push({ index: index, audioPath: audioPath });
         } else {
           if (isCriticalPart && index === startIndex) {
@@ -499,6 +502,7 @@ class TTSUtil {
     this.audioPaths = [];
     this.processingIndexes.clear();
     this.pausedMidSentence = false;
+    this.cacheGeneration++;
   }
   static getPlayer() {
     return this.player;
@@ -586,6 +590,7 @@ class TTSUtil {
 
     this.processingIndexes.add(index);
 
+    const generation = this.cacheGeneration;
     const audioPath = await this.getAudioPath(
       audioNode.text,
       speed,
@@ -599,7 +604,7 @@ class TTSUtil {
 
     this.processingIndexes.delete(index);
 
-    if (audioPath) {
+    if (audioPath && generation === this.cacheGeneration) {
       this.audioPaths.push({ index, audioPath });
       console.log(`[TTS] Audio cached for index ${index}`);
     } else {
