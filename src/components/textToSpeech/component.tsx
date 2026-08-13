@@ -337,6 +337,11 @@ class TextToSpeech extends React.Component<
     if (this.state.isAudioOn) {
       await this.handleStop();
     }
+    // 每次"从此朗读"都必须清除当前书的旧缓存与内存索引，
+    // 否则同一章内不同起点的 part 编号相同，cacheAudio 会因 audioPaths
+    // 去重逻辑跳过重新生成，直接播放上一次起点生成的旧音频文件
+    TTSUtil.setAudioPaths();
+    await TTSUtil.clearKerojiangTtsAudio(this.props.currentBook?.name);
     this.handleStartAudio();
   };
   handleMultiRoleToggle = (enabled: boolean) => {
