@@ -742,9 +742,9 @@ class KerojiangTTSConnection {
       });
     });
 
-    this.ws.on('message', (data) => {
+    this.ws.on('message', (data, isBinary) => {
       this._resetIdleTimer();
-      this._handleMessage(data);
+      this._handleMessage(data, isBinary);
     });
 
     this.ws.on('close', (code, reason) => {
@@ -771,12 +771,16 @@ class KerojiangTTSConnection {
     }, 30000);
   }
 
-  _handleMessage(data) {
-    if (Buffer.isBuffer(data)) {
+  _handleMessage(data, isBinary = false) {
+    // ws 库（8.x）中文本帧和二进制帧都以 Buffer 传入回调，
+    // 需通过 isBinary 标志区分：文本帧 isBinary=false，二进制帧 isBinary=true。
+    // 不能使用 Buffer.isBuffer(data) 判断，否则所有控制消息（response/turn.end）
+    // 都会被当作二进制消息解析而丢弃，导致合成请求永不完成。
+    if (isBinary) {
       // 二进制消息 - 音频数据
       this._handleBinaryMessage(data);
     } else {
-      // 文本消息
+      // 文本消息（兼容 string 与 Buffer 两种传入形式）
       this._handleTextMessage(data.toString());
     }
   }
